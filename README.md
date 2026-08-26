@@ -4,9 +4,9 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 
 ## インストール済みである必要があるplugin
 
-- `pull-request@pull-request`: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`
-- `pr-review-response@pull-request`: `pr-review-assess@pull-request`、`pr-review-apply@pull-request`、`pr-review-verify@pull-request`、`write-doc@write-doc`
-- 下段の各skill plugin: 追加依存なし
+このrepository外の依存だけを記載する。
+
+- `write-doc@write-doc`
 
 ## 検証
 
