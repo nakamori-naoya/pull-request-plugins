@@ -1,0 +1,10 @@
+{
+  "name": "pr-review-apply",
+  "displayName": "pr-review-apply",
+  "version": "0.1.4",
+  "description": "採用済みPR review指摘だけをsourceへ反映する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills"
+}

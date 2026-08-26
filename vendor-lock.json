@@ -1,0 +1,10 @@
+{"schema":2,"upstream":{"repository":"https://github.com/nakamori-naoya/harness-plugins","commit":"10852c3365df0c454160082b1458ca381e5d3dab","copied_at":"2026-08-26"},"plugins":[
+  {"name":"pr-conflict-inspect","version":"0.1.0","path":"plugins/skills/pull-request/pr-conflict-inspect"},
+  {"name":"pr-conflict-resolve","version":"0.1.0","path":"plugins/skills/pull-request/pr-conflict-resolve"},
+  {"name":"pr-create","version":"0.1.0","path":"plugins/skills/pull-request/pr-create"},
+  {"name":"pull-request","version":"0.2.0","path":"plugins/playbooks/pull-request/pull-request"},
+  {"name":"pr-review-assess","version":"0.1.3","path":"plugins/skills/pull-request/pr-review-assess"},
+  {"name":"pr-review-apply","version":"0.1.4","path":"plugins/skills/pull-request/pr-review-apply"},
+  {"name":"pr-review-verify","version":"0.1.3","path":"plugins/skills/pull-request/pr-review-verify"},
+  {"name":"pr-review-response","version":"0.3.0","path":"plugins/playbooks/pull-request/pr-review-response"}
+],"external_dependencies":[{"marketplace":"write-doc","plugin":"write-doc","version":"0.6.0"}]}

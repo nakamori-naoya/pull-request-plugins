@@ -1,0 +1,138 @@
+# version/name/description: 設定形式、plugin名、段取りの目的。
+# instructions: 実行時の絶対規則。requires: 必須の下段plugin。
+version: 2
+name: pr-review-response
+description: PR reviewを評価し、採用分だけを修正・検証・commit・pushする
+instructions:
+  execution:
+    directive: permissionsとhuman gateを厳守し、stepsを上から順に実行する
+requires:
+  - {plugin: pr-review-assess, marketplace: pull-request, version: 0.1.3}
+  - {plugin: pr-review-apply, marketplace: pull-request, version: 0.1.4}
+  - {plugin: pr-review-verify, marketplace: pull-request, version: 0.1.3}
+  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+
+# 下段どうしをつなぐ契約。**上段が持つ。**
+# assess が出し apply が受ける JSON の形で、両者はこの一覧の写しを実装に持つ。
+# 写しがずれると「前工程が通したものを次工程が落とす」事故になるので、lint が一致を検査する。
+contract:
+  # assessment_root/comment: 評価JSONに必須のfield。decision: 許される採否値。
+  assessment_root: [schema, repository, pull_request, head_sha, comments]
+  assessment_comment: [id, decision, intent, reason, proposed_change, verification]
+  decision: [accept, reject, defer]
+# report: 評価過程を資料化するか。timingは資料を挟む位置。
+report:
+  enabled: false
+  timing: before_commit
+# permissions: 各副作用を許可するか。falseの工程は実行しない。
+permissions:
+  review_import: true
+  modify: true
+  commit: true
+  push: true
+# gates: trueなら、その地点で人間の確認を得るまで先へ進まない。
+gates:
+  after_assessment: true
+  before_modify: true
+  after_modify: true
+  before_commit: true
+  before_push: true
+# verification.commands: 修正後にすべて成功させるcommand。
+verification:
+  commands: ["git diff --check"]
+# git: push先、開始時clean必須か、作成するcommit message。
+git:
+  remote: origin
+  require_clean_start: true
+  commit_message: Address accepted PR review feedback
+# stepsは記載順に実行する。
+# script/skill/playbook: 呼ぶ処理。needs: 開始条件。provides: 完了時の成果物。
+# when: 条件が真のときだけ実行。conditional_needs: 同じ条件のときだけ増える開始条件。
+steps:
+  - id: preflight
+    script: scripts/control.py
+    purpose: repositoryと開始時worktree状態を検査する
+    provides: [baseline]
+  - id: assess
+    skill: assess-pr-review
+    purpose: MCPでreview commentを取得し、sourceと照合して採否を判断する
+    needs: [baseline]
+    provides: [assessment]
+  - id: assessment-gate
+    script: scripts/control.py
+    purpose: 評価結果を人間へ提示し、設定されたgateを通す
+    needs: [assessment]
+    provides: [assessment_approved]
+  - id: report-after-assessment
+    playbook: write-doc
+    when: report.enabled && report.timing == after_assessment
+    purpose: 評価・採否判断を資料化する
+    needs: [assessment_approved]
+    provides: [review_report_after_assessment]
+  - id: modify-gate
+    script: scripts/control.py
+    purpose: 修正許可と修正前gateを確認する
+    needs: [assessment_approved]
+    conditional_needs:
+      - when: report.enabled && report.timing == after_assessment
+        needs: [review_report_after_assessment]
+    provides: [modify_approved]
+  - id: modify
+    skill: apply-pr-review
+    purpose: 採用分だけを実装する
+    needs: [assessment, modify_approved]
+    provides: [changes, change_report]
+  - id: modified-gate
+    script: scripts/control.py
+    purpose: 修正差分を人間へ提示し、修正後gateを通す
+    needs: [changes, change_report]
+    provides: [changes_approved]
+  - id: verify
+    skill: verify-pr-review
+    purpose: 設定された検証を実行する
+    needs: [changes_approved]
+    provides: [verification]
+  - id: report-before-commit
+    playbook: write-doc
+    when: report.enabled && report.timing == before_commit
+    purpose: 評価、変更差分、検証結果をcommit前に資料化する
+    needs: [assessment, change_report, verification]
+    provides: [review_report_before_commit]
+  - id: commit-gate
+    script: scripts/control.py
+    purpose: 検証結果とcommit対象を提示し、commit前gateを通す
+    needs: [verification]
+    conditional_needs:
+      - when: report.enabled && report.timing == before_commit
+        needs: [review_report_before_commit]
+    provides: [commit_approved]
+  - id: commit
+    script: scripts/publish.sh
+    purpose: 採用修正のpathだけをstageしてcommitする
+    needs: [commit_approved]
+    provides: [commit]
+  - id: report-before-push
+    playbook: write-doc
+    when: report.enabled && report.timing == before_push
+    purpose: 評価、変更差分、検証結果、commitをpush前に資料化する
+    needs: [assessment, change_report, verification, commit]
+    provides: [review_report_before_push]
+  - id: push-gate
+    script: scripts/control.py
+    purpose: branchとcommitを提示し、push前gateを通す
+    needs: [commit]
+    conditional_needs:
+      - when: report.enabled && report.timing == before_push
+        needs: [review_report_before_push]
+    provides: [push_approved]
+  - id: push
+    script: scripts/publish.sh
+    purpose: 設定されたremoteへ現在branchをpushする
+    needs: [push_approved]
+    provides: [pushed_branch]
+  - id: report-after-push
+    playbook: write-doc
+    when: report.enabled && report.timing == after_push
+    purpose: 評価からpush結果までを資料化する
+    needs: [assessment, change_report, verification, commit, pushed_branch]
+    provides: [review_report_after_push]

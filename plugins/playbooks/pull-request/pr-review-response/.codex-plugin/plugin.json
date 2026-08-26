@@ -1,0 +1,20 @@
+{
+  "name": "pr-review-response",
+  "version": "0.3.0",
+  "description": "PR reviewの評価、採用修正、検証、commit、pushを人間gate付きで進める。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Pr Review Response",
+    "shortDescription": "PR reviewの評価、採用修正、検証、commit、pushを人間gate付きで進める。",
+    "longDescription": "PR reviewの評価、採用修正、検証、commit、pushを人間gate付きで進める。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "pr-review-responseを使ってこの作業を進めてください。"
+  }
+}

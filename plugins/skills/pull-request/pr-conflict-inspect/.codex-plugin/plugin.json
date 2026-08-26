@@ -1,0 +1,20 @@
+{
+  "name": "pr-conflict-inspect",
+  "version": "0.1.0",
+  "description": "PR branchとbaseの競合を検出し、現行実装、関連履歴、過去PRから両側の意図を復元する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Pr Conflict Inspect",
+    "shortDescription": "PR branchとbaseの競合を検出し、現行実装、関連履歴、過去PRから両側の意図を復元する。",
+    "longDescription": "PR branchとbaseの競合を検出し、現行実装、関連履歴、過去PRから両側の意図を復元する。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "pr-conflict-inspectを使ってこの作業を進めてください。"
+  }
+}

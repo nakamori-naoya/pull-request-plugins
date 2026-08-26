@@ -1,0 +1,20 @@
+{
+  "name": "pr-create",
+  "version": "0.1.0",
+  "description": "Git branchの差分と検証状態を確認し、重複を避けてGitHub Pull Requestを作成する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Pr Create",
+    "shortDescription": "Git branchの差分と検証状態を確認し、重複を避けてGitHub Pull Requestを作成する。",
+    "longDescription": "Git branchの差分と検証状態を確認し、重複を避けてGitHub Pull Requestを作成する。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "pr-createを使ってこの作業を進めてください。"
+  }
+}

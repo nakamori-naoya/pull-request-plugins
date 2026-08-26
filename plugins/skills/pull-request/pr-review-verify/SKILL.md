@@ -1,0 +1,26 @@
+---
+name: verify-pr-review
+description: repositoryと検証command一覧を受け取り、PR review修正を順番どおり検証して成否を返す。「レビュー修正を検証して」と言われたときに使う。source変更、commit、pushは行わない。
+---
+
+# verify-pr-review
+
+## 0. プラグイン root を決める
+
+<!-- BEGIN shared:skill-entry/root-only -->
+```bash
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
+```
+
+**このコマンドは説明例ではない。必ず実行する。** 失敗したら先へ進まない。
+<!-- END shared:skill-entry/root-only -->
+
+## 1. 実行
+
+```bash
+printf '%s\n' '["git diff --check"]' > /tmp/verification-commands.json
+bash "${PLUGIN_ROOT}/scripts/verify.sh" --repo /path/to/repository --commands-file /tmp/verification-commands.json
+```
+
+commandは入力順に実行する。1件でも失敗したらexit 3で停止し、失敗commandを報告する。全件成功時だけ検証成功としてcommand数を返す。source変更、commit、pushは行わない。

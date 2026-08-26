@@ -1,0 +1,10 @@
+{
+  "name": "pr-review-response",
+  "displayName": "pr-review-response",
+  "version": "0.3.0",
+  "description": "PR reviewの評価、採用修正、検証、commit、pushを人間gate付きで進める。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills"
+}

@@ -1,0 +1,74 @@
+# version/name/description: 設定形式、plugin名、段取りの目的。
+# instructions: 実行時の絶対規則。requires: 必須の下段plugin。
+version: 2
+name: pull-request
+description: 競合を調査・解消し、検証済みbranchからPull Requestを作成する
+instructions:
+  execution:
+    directive: repositoryのpermissionとhuman gateを守り、現在の実装と関連履歴を確認してstepsを上から順に実行する
+requires:
+  - {plugin: pr-conflict-inspect, marketplace: pull-request, version: 0.1.0}
+  - {plugin: pr-conflict-resolve, marketplace: pull-request, version: 0.1.0}
+  - {plugin: pr-create, marketplace: pull-request, version: 0.1.0}
+  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+
+# conflict_report.timing: 競合資料を解消前の提案、解消後の実績のどちらで作るか。
+conflict_report:
+  timing: before_resolution
+# git: 比較・push・PR作成に使うbaseとremote。
+git:
+  base_branch: main
+  remote: origin
+# pull_request.draft: PRをdraftで作るか。
+pull_request:
+  draft: false
+# verification.commands: 競合解消後、PR作成前にすべて成功させるcommand。
+verification:
+  commands: ["git diff --check"]
+
+# stepsは記載順に実行する。
+# when: 実行時成果または設定が真のときだけ実行する。
+steps:
+  - id: inspect-conflicts
+    skill: inspect-pr-conflicts
+    purpose: 現行実装、関連commit、過去PRから競合と両側の意図を調べる
+    provides: [conflict_state, conflict_assessment]
+  - id: report-before-resolution
+    playbook: write-doc
+    when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+    purpose: 競合内容と推奨解消方針を提案資料にして解消前に利用者へ示す
+    needs: [conflict_state, conflict_assessment]
+    provides: [conflict_proposal]
+  - id: approve-conflict-proposal
+    script: scripts/gate.sh
+    when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+    purpose: 提案資料を示した後、利用者の明示承認まで競合解消を止める
+    needs: [conflict_proposal]
+    provides: [conflict_proposal_approved]
+  - id: resolve-conflicts
+    skill: resolve-pr-conflicts
+    when: conflict_state.has_conflicts
+    purpose: 調査した意図と現在状態を照合し、競合を解消して検証する
+    needs: [conflict_state, conflict_assessment]
+    conditional_needs:
+      - when: conflict_report.timing == before_resolution
+        needs: [conflict_proposal_approved]
+    provides: [conflict_resolution, conflict_verification]
+  - id: report-after-resolution
+    playbook: write-doc
+    when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
+    purpose: 起きていた競合、採った方針、修正、検証を解消後の資料にする
+    needs: [conflict_state, conflict_assessment, conflict_resolution, conflict_verification]
+    provides: [conflict_resolution_report]
+  - id: create-pull-request
+    skill: create-pull-request
+    purpose: 競合が無い検証済みbranchをpushし、重複のないPull Requestを作る
+    needs: [conflict_state]
+    conditional_needs:
+      - when: conflict_state.has_conflicts
+        needs: [conflict_resolution, conflict_verification]
+      - when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+        needs: [conflict_proposal_approved]
+      - when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
+        needs: [conflict_resolution_report]
+    provides: [pull_request]

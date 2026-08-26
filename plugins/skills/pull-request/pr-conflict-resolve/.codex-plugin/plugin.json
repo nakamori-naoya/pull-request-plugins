@@ -1,0 +1,20 @@
+{
+  "name": "pr-conflict-resolve",
+  "version": "0.1.0",
+  "description": "関連履歴と過去PRから意図を確認し、PR branchの競合を意味に基づいて解消・検証する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Pr Conflict Resolve",
+    "shortDescription": "関連履歴と過去PRから意図を確認し、PR branchの競合を意味に基づいて解消・検証する。",
+    "longDescription": "関連履歴と過去PRから意図を確認し、PR branchの競合を意味に基づいて解消・検証する。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "pr-conflict-resolveを使ってこの作業を進めてください。"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "pr-review-verify",
+  "version": "0.1.3",
+  "description": "PR review修正を指定commandで検証する。",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Pr Review Verify",
+    "shortDescription": "PR review修正を指定commandで検証する。",
+    "longDescription": "PR review修正を指定commandで検証する。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": "pr-review-verifyを使ってこの作業を進めてください。"
+  }
+}
