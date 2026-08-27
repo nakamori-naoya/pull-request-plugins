@@ -4,7 +4,9 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 
 ## インストール
 
-Codexでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+### Codex
+
+Codexのpluginコマンドには`--scope`がない。通常の手順はuser単位でmarketplaceとpluginを登録する。
 
 ```bash
 codex plugin marketplace add nakamori-naoya/pull-request-plugins
@@ -18,18 +20,50 @@ codex plugin add pr-review-verify@pull-request
 codex plugin add pr-review-response@pull-request
 ```
 
-Claude Codeでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+このrepositoryだけに分離したい場合は、repository専用の`CODEX_HOME`を作り、インストール時と利用時に同じ値を指定する。
 
 ```bash
-claude plugin marketplace add nakamori-naoya/pull-request-plugins
-claude plugin install pr-conflict-inspect@pull-request
-claude plugin install pr-conflict-resolve@pull-request
-claude plugin install pr-create@pull-request
-claude plugin install pull-request@pull-request
-claude plugin install pr-review-assess@pull-request
-claude plugin install pr-review-apply@pull-request
-claude plugin install pr-review-verify@pull-request
-claude plugin install pr-review-response@pull-request
+mkdir -p .codex-home
+export CODEX_HOME="$PWD/.codex-home"
+
+codex plugin marketplace add nakamori-naoya/pull-request-plugins
+codex plugin add pr-conflict-inspect@pull-request
+codex plugin add pr-conflict-resolve@pull-request
+codex plugin add pr-create@pull-request
+codex plugin add pull-request@pull-request
+codex plugin add pr-review-assess@pull-request
+codex plugin add pr-review-apply@pull-request
+codex plugin add pr-review-verify@pull-request
+codex plugin add pr-review-response@pull-request
+codex
+```
+
+`CODEX_HOME`には認証、設定、ログ、session、plugin metadataも保存されるため、このdirectoryはGit管理しない。
+
+### Claude Code
+
+Claude Codeは次のscopeを選べる。
+
+| scope | 対象 |
+|---|---|
+| `user` | user全体。省略時の既定値 |
+| `project` | このrepositoryで有効にする設定をGitでチーム共有する |
+| `local` | このrepositoryで有効にするが、Git共有せず自分だけで使う |
+
+repository設定としてインストールする場合は`project`を指定する。`CLAUDE_PLUGIN_SCOPE`を`user`または`local`へ変えれば、同じ手順でscopeを切り替えられる。
+
+```bash
+CLAUDE_PLUGIN_SCOPE=project
+
+claude plugin marketplace add nakamori-naoya/pull-request-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-conflict-inspect@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-conflict-resolve@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-create@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pull-request@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-review-assess@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-review-apply@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-review-verify@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install pr-review-response@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
 ```
 
 ## インストール済みである必要があるplugin
