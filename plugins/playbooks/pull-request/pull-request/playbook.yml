@@ -7,10 +7,10 @@ instructions:
   execution:
     directive: repositoryのpermissionとhuman gateを守り、現在の実装と関連履歴を確認してstepsを上から順に実行する
 requires:
-  - {plugin: pr-conflict-inspect, marketplace: pull-request, version: 0.1.0}
-  - {plugin: pr-conflict-resolve, marketplace: pull-request, version: 0.1.0}
-  - {plugin: pr-create, marketplace: pull-request, version: 0.1.0}
-  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+  - {plugin: pr-conflict-inspect, marketplace: pull-request}
+  - {plugin: pr-conflict-resolve, marketplace: pull-request}
+  - {plugin: pr-create, marketplace: pull-request}
+  - {plugin: write-doc, marketplace: write-doc}
 
 # conflict_report.timing: 競合資料を解消前の提案、解消後の実績のどちらで作るか。
 conflict_report:

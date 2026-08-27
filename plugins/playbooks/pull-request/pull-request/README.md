@@ -34,4 +34,4 @@ conflict_report:
 - 競合、marker、検証失敗が残る
 - repositoryのpermissionまたはhuman gateを満たさない
 
-必要plugin: `pr-conflict-inspect`、`pr-conflict-resolve`、`pr-create`、`write-doc`。
+必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`。versionは固定せず、解決先のmanifest identityと必要なskillまたはplaybookを検査する。

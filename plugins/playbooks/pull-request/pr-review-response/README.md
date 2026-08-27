@@ -7,7 +7,11 @@
 外部設定は`playbook.yml`を丸ごと複製して編集する。repository設定は`<repo>/.harness-plugins/pr-review-response.config.yml`、personal設定は`~/.config/harness-plugins/pr-review-response.config.yml`。値はマージしない。
 
 ```yaml
-requires: [pr-review-assess, pr-review-apply, pr-review-verify]
+requires:
+  - {plugin: pr-review-assess, marketplace: pull-request}
+  - {plugin: pr-review-apply, marketplace: pull-request}
+  - {plugin: pr-review-verify, marketplace: pull-request}
+  - {plugin: write-doc, marketplace: write-doc}
 report:
   enabled: false
   timing: before_commit
@@ -32,10 +36,16 @@ git:
 
 permissionがfalseなら該当操作は実行しない。gateがtrueなら、明示承認を得るまで次工程へ進まない。permissionとgateをLLM判断で読み替えない。
 
-`report.enabled`がfalseなら資料を作らず`write-doc`も呼ばない。trueなら`requires`へ`write-doc`を追加する。`timing`は`after_assessment`、`before_commit`、`before_push`、`after_push`のいずれかで、該当位置にだけ資料を作る。
+`requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時にmanifest identityと必要なskillまたはplaybookを検査する。
+
+`report.enabled`がfalseなら資料を作らず`write-doc`も呼ばない。`write-doc@write-doc`は完全設定の依存に残す。trueなら`timing`は`after_assessment`、`before_commit`、`before_push`、`after_push`のいずれかで、該当位置にだけ資料を作る。
 
 ```yaml
-requires: [pr-review-assess, pr-review-apply, pr-review-verify, write-doc]
+requires:
+  - {plugin: pr-review-assess, marketplace: pull-request}
+  - {plugin: pr-review-apply, marketplace: pull-request}
+  - {plugin: pr-review-verify, marketplace: pull-request}
+  - {plugin: write-doc, marketplace: write-doc}
 report:
   enabled: true
   timing: before_push

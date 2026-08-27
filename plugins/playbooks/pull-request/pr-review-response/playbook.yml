@@ -7,10 +7,10 @@ instructions:
   execution:
     directive: permissionsとhuman gateを厳守し、stepsを上から順に実行する
 requires:
-  - {plugin: pr-review-assess, marketplace: pull-request, version: 0.1.3}
-  - {plugin: pr-review-apply, marketplace: pull-request, version: 0.1.4}
-  - {plugin: pr-review-verify, marketplace: pull-request, version: 0.1.3}
-  - {plugin: write-doc, marketplace: write-doc, version: 0.6.0}
+  - {plugin: pr-review-assess, marketplace: pull-request}
+  - {plugin: pr-review-apply, marketplace: pull-request}
+  - {plugin: pr-review-verify, marketplace: pull-request}
+  - {plugin: write-doc, marketplace: write-doc}
 
 # 下段どうしをつなぐ契約。**上段が持つ。**
 # assess が出し apply が受ける JSON の形で、両者はこの一覧の写しを実装に持つ。
