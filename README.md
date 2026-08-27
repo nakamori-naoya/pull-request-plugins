@@ -2,6 +2,36 @@
 
 Pull Requestの競合調査・解消・作成と、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。
 
+## インストール
+
+Codexでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+
+```bash
+codex plugin marketplace add nakamori-naoya/pull-request-plugins
+codex plugin add pr-conflict-inspect@pull-request
+codex plugin add pr-conflict-resolve@pull-request
+codex plugin add pr-create@pull-request
+codex plugin add pull-request@pull-request
+codex plugin add pr-review-assess@pull-request
+codex plugin add pr-review-apply@pull-request
+codex plugin add pr-review-verify@pull-request
+codex plugin add pr-review-response@pull-request
+```
+
+Claude Codeでは、marketplaceを登録した後、必要なpluginのコマンドを実行する。
+
+```bash
+claude plugin marketplace add nakamori-naoya/pull-request-plugins
+claude plugin install pr-conflict-inspect@pull-request
+claude plugin install pr-conflict-resolve@pull-request
+claude plugin install pr-create@pull-request
+claude plugin install pull-request@pull-request
+claude plugin install pr-review-assess@pull-request
+claude plugin install pr-review-apply@pull-request
+claude plugin install pr-review-verify@pull-request
+claude plugin install pr-review-response@pull-request
+```
+
 ## インストール済みである必要があるplugin
 
 このrepository外の依存だけを記載する。
