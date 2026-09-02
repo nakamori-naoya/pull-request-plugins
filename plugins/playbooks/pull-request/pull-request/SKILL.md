@@ -7,6 +7,8 @@ description: Gitの作業branchとbase branchの競合を検出し、現行実�
 
 競合解消とPR作成を、設定された資料提示時点とrepositoryの公開規則を保って完了する。
 
+下書きPRを内部レビュー完了後にレビュー受付へ遷移する責務は、この`open-pull-request`工程には含めない。明示入力でその遷移だけを行う同一pluginの第2入口`mark-ready-for-review`を使う。
+
 ## 0. plugin rootを決める
 
 <!-- BEGIN shared:skill-entry/root-block -->

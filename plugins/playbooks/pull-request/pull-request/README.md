@@ -35,3 +35,9 @@ conflict_report:
 - repositoryのpermissionまたはhuman gateを満たさない
 
 必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`、`agent-work-policy@agent-work-policy`。公開Git操作のpermission・gate・実行は最後のpluginへ委譲する。versionは固定せず、解決先のmanifest identityと必要なskillまたはplaybookを検査する。
+
+## 下書きPRをレビュー受付へ遷移する入口
+
+`mark-ready-for-review`は、このpluginの第2入口skillである。`open-pull-request` playbookのstepには含めないため、PR作成直後に下書きを無条件で解除しない。利用者またはmanagerがPR番号、Agent Work Policy root、内部レビュー完了を明示した場合だけ実行し、時点は内部レビュー完了後かつmerge readiness判定前である。
+
+Policyが公開済みPRを返した場合は変更せず成功となる。Policyの呼び出し失敗、または`ready-for-review` capabilityが無い依存先では停止する。下流はpermission、gate、PR照合、下書き判定、`gh pr ready`を持たない。

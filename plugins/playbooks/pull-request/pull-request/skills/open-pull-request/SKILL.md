@@ -12,3 +12,5 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
 bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 cat "${PLUGIN_ROOT}/SKILL.md"
 ```
+
+下書きPRを内部レビュー完了後にレビュー受付へ遷移する依頼は、この入口では扱わない。同じpluginの`mark-ready-for-review`入口を使う。

@@ -134,6 +134,91 @@ validate_publication_delegation_contract() {
   return "$status"
 }
 
+validate_ready_for_review_delegation_contract() {
+  local fixture="$TMP_ROOT/ready-for-review"
+  local runner="$ROOT/plugins/playbooks/pull-request/pull-request/scripts/ready-for-review.sh"
+  local status=0
+  local out code
+
+  mkdir -p "$fixture/policy/scripts" "$fixture/repo"
+  printf '%s\n' '{}' > "$fixture/policy/config.yml"
+  cat > "$fixture/policy/scripts/prepare.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\\n' "$fixture/policy/config.yml"
+EOF
+  cat > "$fixture/policy/scripts/control.py" <<'EOF'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+
+if "--help" in sys.argv:
+    print(os.environ.get("FIXTURE_CAPABILITY", "ready-for-review"))
+    raise SystemExit(0)
+if sys.argv[1:2] != ["ready-for-review"]:
+    raise SystemExit(2)
+with open(os.environ["FIXTURE_CALL"], "a", encoding="utf-8") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\n")
+mode = os.environ["FIXTURE_MODE"]
+if mode == "failed":
+    print(json.dumps({"status": "failed"}))
+    raise SystemExit(3)
+print(json.dumps({"status": "ready", "changed": mode == "draft"}))
+EOF
+  chmod +x "$fixture/policy/scripts/prepare.sh" "$fixture/policy/scripts/control.py"
+
+  for mode in draft published; do
+    rm -f "$fixture/call"
+    out=$(FIXTURE_MODE="$mode" FIXTURE_CALL="$fixture/call" "$runner" --policy-root="$fixture/policy" --repo="$fixture/repo" --pr=42 --internal-review-complete) || status=1
+    expected_changed=false
+    [ "$mode" = draft ] && expected_changed=true
+    jq -e --argjson changed "$expected_changed" '.status=="ready" and .changed==$changed' >/dev/null <<<"$out" || status=1
+    [ "$(wc -l < "$fixture/call")" -eq 1 ] || status=1
+    rg 'ready-for-review --config .+ --repo .+ --pr 42' "$fixture/call" >/dev/null || status=1
+  done
+
+  if out=$(FIXTURE_MODE=failed FIXTURE_CALL="$fixture/call" "$runner" --policy-root "$fixture/policy" --repo "$fixture/repo" --pr 42 --internal-review-complete); then
+    status=1
+  else
+    code=$?
+    [ "$code" -eq 3 ] || status=1
+    jq -e '.status=="failed"' >/dev/null <<<"$out" || status=1
+  fi
+
+  if out=$(FIXTURE_CAPABILITY=other-command FIXTURE_MODE=draft FIXTURE_CALL="$fixture/call" "$runner" --policy-root "$fixture/policy" --repo "$fixture/repo" --pr 42 --internal-review-complete); then
+    status=1
+  else
+    code=$?
+    [ "$code" -eq 2 ] || status=1
+    jq -e '.status=="invalid" and .reason=="policy_capability_missing"' >/dev/null <<<"$out" || status=1
+  fi
+
+  return "$status"
+}
+
+validate_pull_request_resolver_contract() {
+  local fixture="$TMP_ROOT/pull-request-resolver"
+  local pull="$ROOT/plugins/playbooks/pull-request/pull-request"
+  local status=0
+  local out
+
+  mkdir -p "$fixture/repo" "$fixture/empty-cache" "$fixture/policy/.codex-plugin" "$fixture/write-doc/.codex-plugin"
+  printf '%s\n' '{"name":"agent-work-policy","version":"0.1.6"}' > "$fixture/policy/.codex-plugin/plugin.json"
+  printf '%s\n' '---' 'name: work-with-policy' 'description: fixture' '---' > "$fixture/policy/SKILL.md"
+  printf '%s\n' '{"name":"write-doc","version":"0.6.0"}' > "$fixture/write-doc/.codex-plugin/plugin.json"
+  printf '%s\n' '---' 'name: write-doc' 'description: fixture' '---' > "$fixture/write-doc/SKILL.md"
+  jq -n --arg policy "$fixture/policy" --arg write_doc "$fixture/write-doc" \
+    '{schema:1,dependencies:{"agent-work-policy/agent-work-policy":$policy,"write-doc/write-doc":$write_doc}}' > "$fixture/dev-roots.json"
+  out=$(XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_CACHE_ROOT="$fixture/empty-cache" HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
+    bash "$pull/scripts/resolve.sh" "$fixture/repo") || status=1
+  yq -o=json -I=0 '.' <<<"$out" | jq -e '
+    .playbook.name=="pull-request" and
+    ([.playbook.steps[].id] | index("ready-for-review") | not) and
+    (.playbook.steps | length==6)
+  ' >/dev/null || status=1
+  return "$status"
+}
+
 validate_manifest_identity_contract() {
   local fixture="$TMP_ROOT/manifest-identity"
   local source="$ROOT/plugins/skills/pull-request/pr-create"
@@ -190,6 +275,8 @@ while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROO
 while IFS= read -r script; do PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 -m py_compile "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.py' | sort)
 validate_dependency_resolution_contract || failed=1
 validate_publication_delegation_contract || failed=1
+validate_ready_for_review_delegation_contract || failed=1
+validate_pull_request_resolver_contract || failed=1
 validate_manifest_identity_contract || failed=1
 if [ "$failed" -eq 0 ]; then echo 'Validation: passed'; else echo 'Validation: failed'; fi
 [ "$failed" -eq 0 ]
