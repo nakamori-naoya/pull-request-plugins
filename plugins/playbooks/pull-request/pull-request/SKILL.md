@@ -30,13 +30,17 @@ trap 'rm -f "$CFG_FILE"' EXIT
 本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
 <!-- END shared:skill-entry/config-load -->
 
-`${.instructions.execution.directive}`に従い、`${.playbook.steps}`を上から実行する。`${.playbook.conflict_report.timing}`、`${.playbook.git}`、`${.playbook.pull_request.draft}`、`${.playbook.verification.commands}`は使用時に読む。
+`${.instructions.execution.directive}`に従い、`${.playbook.steps}`を上から実行する。`${.playbook.conflict_report.timing}`と`${.playbook.verification.commands}`は使用時に読む。公開Git操作の設定と実行はAgent Work Policyへ委譲し、このplaybookの設定からは読まない。
+
+`${.deps["agent-work-policy"].root}`を唯一の`POLICY_ROOT`として受け取り、`bash "$POLICY_ROOT/scripts/prepare.sh" "$(pwd)"`で公開方針を解決する。そこで得た`${.workspace.base_branch}`、`${.git.remote}`、`${.pull_request.draft}`を競合調査・解消・PR作成へ明示的に渡す。`create-pull-request`には同じ`POLICY_ROOT`を`--policy-root`として渡す。依存cacheのpath推測、下流側での設定再解決、別のbase/remote/draftの指定はしない。
+
+公開方針はrepository単位で一つである。上記のAgent Work Policy `prepare.sh`へ`--scope`は渡さない。scope設定で公開permissionやhuman gateを弱める経路を作らないためである。
 
 各工程へ`--scope=${.resolution.scope_root}`を渡す。入れ子の段取りへは受け取ったscopeを作り直さずそのまま渡す。
 
 ## 2. 競合を扱う
 
-競合調査のSHAと証拠を保持する。競合が無ければ資料作成と解消を飛ばす。
+競合調査のSHAと証拠を保持する。競合が無ければ資料作成と解消を飛ばす。競合調査だけを行う場合も、baseとremoteの出所を単一に保つためAgent Work Policyの設定解決が必要である。
 
 `before_resolution`では、競合、両側の目的、推奨方針、検証案を資料化して利用者へ示す。明示承認を得るまでgateを通さず、解消を始めない。`after_resolution`では事前資料とgateを使わず、解消後に競合、採った方針、実際の修正、検証結果を資料化して示す。
 
@@ -44,6 +48,6 @@ trap 'rm -f "$CFG_FILE"' EXIT
 
 ## 3. PRを作成して報告する
 
-競合なし、または解消と全検証が成功した場合だけPR作成工程へ進む。title、body、draft、base、remoteと、競合があった場合は解消結果と資料参照を渡す。
+競合なし、または解消と全検証が成功した場合だけPR作成工程へ進む。title、body、AWP設定から得たdraft、base、remote、`--policy-root="$POLICY_ROOT"`と、競合があった場合は解消結果と資料参照を渡す。
 
-PR URLとnumber、head/base、競合の有無、資料の提示時点とpath、解消方針、検証結果、push、draft、停止・未確認事項を報告する。
+PR URLとnumber、head/base、競合の有無、資料の提示時点とpath、解消方針、検証結果、Agent Work Policyが返したpush・draft・停止・未確認事項を報告する。

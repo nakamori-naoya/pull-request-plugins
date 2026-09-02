@@ -1,7 +1,7 @@
 {
   "name": "pull-request",
   "displayName": "pull-request",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "競合を履歴と過去PRから調査・解消し、検証済みbranchからPull Requestを作成する。",
   "author": {
     "name": "NaoyaNakamori"

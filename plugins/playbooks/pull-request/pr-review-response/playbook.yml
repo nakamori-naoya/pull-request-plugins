@@ -11,6 +11,7 @@ requires:
   - {plugin: pr-review-apply, marketplace: pull-request}
   - {plugin: pr-review-verify, marketplace: pull-request}
   - {plugin: write-doc, marketplace: write-doc}
+  - {plugin: agent-work-policy, marketplace: agent-work-policy}
 
 # 下段どうしをつなぐ契約。**上段が持つ。**
 # assess が出し apply が受ける JSON の形で、両者はこの一覧の写しを実装に持つ。
@@ -24,25 +25,22 @@ contract:
 report:
   enabled: false
   timing: before_commit
-# permissions: 各副作用を許可するか。falseの工程は実行しない。
+# permissions: review取込と修正だけをこのplaybookが判断する。公開Git操作は
+# Agent Work Policyが唯一の所有者である。
 permissions:
   review_import: true
   modify: true
-  commit: true
-  push: true
-# gates: trueなら、その地点で人間の確認を得るまで先へ進まない。
+# gates: review判断と修正だけをこのplaybookが扱う。commit/pushのgateは
+# Agent Work Policyの解決済み設定で判定する。
 gates:
   after_assessment: true
   before_modify: true
   after_modify: true
-  before_commit: true
-  before_push: true
 # verification.commands: 修正後にすべて成功させるcommand。
 verification:
   commands: ["git diff --check"]
-# git: push先、開始時clean必須か、作成するcommit message。
+# git: review取込の開始時clean必須か、作成するcommit message。
 git:
-  remote: origin
   require_clean_start: true
   commit_message: Address accepted PR review feedback
 # stepsは記載順に実行する。
@@ -98,18 +96,14 @@ steps:
     purpose: 評価、変更差分、検証結果をcommit前に資料化する
     needs: [assessment, change_report, verification]
     provides: [review_report_before_commit]
-  - id: commit-gate
+  - id: commit
     script: scripts/control.py
-    purpose: 検証結果とcommit対象を提示し、commit前gateを通す
+    plugin: agent-work-policy
+    purpose: Agent Work Policyへ限定path、message、検証を渡してcommitする
     needs: [verification]
     conditional_needs:
       - when: report.enabled && report.timing == before_commit
         needs: [review_report_before_commit]
-    provides: [commit_approved]
-  - id: commit
-    script: scripts/publish.sh
-    purpose: 採用修正のpathだけをstageしてcommitする
-    needs: [commit_approved]
     provides: [commit]
   - id: report-before-push
     playbook: write-doc
@@ -117,18 +111,14 @@ steps:
     purpose: 評価、変更差分、検証結果、commitをpush前に資料化する
     needs: [assessment, change_report, verification, commit]
     provides: [review_report_before_push]
-  - id: push-gate
+  - id: push
     script: scripts/control.py
-    purpose: branchとcommitを提示し、push前gateを通す
+    plugin: agent-work-policy
+    purpose: Agent Work Policyへ現在branchを渡してpushする
     needs: [commit]
     conditional_needs:
       - when: report.enabled && report.timing == before_push
         needs: [review_report_before_push]
-    provides: [push_approved]
-  - id: push
-    script: scripts/publish.sh
-    purpose: 設定されたremoteへ現在branchをpushする
-    needs: [push_approved]
     provides: [pushed_branch]
   - id: report-after-push
     playbook: write-doc

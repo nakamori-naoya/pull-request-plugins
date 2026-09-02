@@ -1,8 +1,8 @@
 {
   "name": "pr-review-response",
   "displayName": "pr-review-response",
-  "version": "0.3.0",
-  "description": "PR reviewの評価、採用修正、検証、commit、pushを人間gate付きで進める。",
+  "version": "0.4.0",
+  "description": "PR reviewの評価、採用修正、検証を進め、commitとpushはAgent Work Policyへ委譲する。",
   "author": {
     "name": "NaoyaNakamori"
   },

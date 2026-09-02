@@ -20,7 +20,7 @@ conflict_report:
   timing: after_resolution   # 解消後に競合、方針、修正、検証を資料化して示す
 ```
 
-[同梱の完全設定](playbook.yml)には`version`、`name`、`description`、`instructions`、`requires`、`conflict_report`、`git`、`pull_request`、`verification`、`steps`が必要である。`git.base_branch`、`git.remote`、`pull_request.draft`、`verification.commands`も対象repositoryに合わせる。
+[同梱の完全設定](playbook.yml)には`version`、`name`、`description`、`instructions`、`requires`、`conflict_report`、`verification`、`steps`が必要である。`base_branch`、`remote`、`draft`はこの設定に置かず、Agent Work Policyが対象repository向けに解決した設定だけを使う。競合調査だけを行う場合もこの依存が必須であり、Agent Work Policy設定が無ければ停止する。
 
 ## 入力と出力
 
@@ -34,4 +34,4 @@ conflict_report:
 - 競合、marker、検証失敗が残る
 - repositoryのpermissionまたはhuman gateを満たさない
 
-必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`。versionは固定せず、解決先のmanifest identityと必要なskillまたはplaybookを検査する。
+必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`、`agent-work-policy@agent-work-policy`。公開Git操作のpermission・gate・実行は最後のpluginへ委譲する。versionは固定せず、解決先のmanifest identityと必要なskillまたはplaybookを検査する。

@@ -1,6 +1,6 @@
 # pr-review-response
 
-指定PRのreview commentを評価し、採用分だけを修正、検証、commit、pushする。工程順、許可、human gateは設定で確定し、コメントの妥当性と修正内容はLLMがsourceを読んで判断する。
+指定PRのreview commentを評価し、採用分だけを修正、検証する。コメントの妥当性と修正内容はLLMがsourceを読んで判断し、commit/pushの許可・gate・実行は`agent-work-policy`へ委譲する。
 
 ## 完全設定
 
@@ -12,29 +12,25 @@ requires:
   - {plugin: pr-review-apply, marketplace: pull-request}
   - {plugin: pr-review-verify, marketplace: pull-request}
   - {plugin: write-doc, marketplace: write-doc}
+  - {plugin: agent-work-policy, marketplace: agent-work-policy}
 report:
   enabled: false
   timing: before_commit
 permissions:
   review_import: true
   modify: true
-  commit: true
-  push: true
 gates:
   after_assessment: true
   before_modify: true
   after_modify: true
-  before_commit: true
-  before_push: true
 verification:
   commands: ["git diff --check"]
 git:
-  remote: origin
   require_clean_start: true
   commit_message: Address accepted PR review feedback
 ```
 
-permissionがfalseなら該当操作は実行しない。gateがtrueなら、明示承認を得るまで次工程へ進まない。permissionとgateをLLM判断で読み替えない。
+この設定のpermissionがfalseならreview取込・修正を実行しない。gateがtrueなら、明示承認を得るまで次工程へ進まない。commit/pushはこの設定で判断せず、Agent Work Policyの解決済み設定と`control.py`だけを使う。
 
 `requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時にmanifest identityと必要なskillまたはplaybookを検査する。
 
@@ -46,12 +42,17 @@ requires:
   - {plugin: pr-review-apply, marketplace: pull-request}
   - {plugin: pr-review-verify, marketplace: pull-request}
   - {plugin: write-doc, marketplace: write-doc}
+  - {plugin: agent-work-policy, marketplace: agent-work-policy}
 report:
   enabled: true
   timing: before_push
 ```
 
-評価・修正・検証・資料化はそれぞれ自己完結skillが担う。playbookは順序、needs/provides、permission、gateだけを拘束する。
+評価・修正・検証・資料化はそれぞれ自己完結skillが担う。playbookはreview固有の順序、needs/provides、permission、gateだけを拘束する。公開Git操作はAgent Work Policyが所有する。
+
+## 互換性と移行上の注意
+
+公開操作はAgent Work Policyの`workspace.branch_prefix`（既定は`agent/`）を満たすbranchだけで実行される。人間が作成した既存PRのbranchでreview対応を行う場合、prefix外ならpolicyが停止する。既存の`pr-review-response.config.yml`に削除済みの`permissions.commit`、`permissions.push`、`gates.before_commit`、`gates.before_push`、`git.remote`が残る場合も、未知キーとしてfail closedする。
 
 ## 終了条件
 

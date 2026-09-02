@@ -71,6 +71,7 @@ claude plugin install pr-review-response@pull-request --scope "$CLAUDE_PLUGIN_SC
 このrepository外の依存だけを記載する。
 
 - `write-doc@write-doc`
+- `agent-work-policy@agent-work-policy`
 
 playbookの依存は`plugin@marketplace`のidentityだけを宣言し、versionは固定しない。開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
 

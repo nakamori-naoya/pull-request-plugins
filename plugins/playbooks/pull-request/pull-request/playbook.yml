@@ -11,17 +11,11 @@ requires:
   - {plugin: pr-conflict-resolve, marketplace: pull-request}
   - {plugin: pr-create, marketplace: pull-request}
   - {plugin: write-doc, marketplace: write-doc}
+  - {plugin: agent-work-policy, marketplace: agent-work-policy}
 
 # conflict_report.timing: 競合資料を解消前の提案、解消後の実績のどちらで作るか。
 conflict_report:
   timing: before_resolution
-# git: 比較・push・PR作成に使うbaseとremote。
-git:
-  base_branch: main
-  remote: origin
-# pull_request.draft: PRをdraftで作るか。
-pull_request:
-  draft: false
 # verification.commands: 競合解消後、PR作成前にすべて成功させるcommand。
 verification:
   commands: ["git diff --check"]
@@ -63,6 +57,7 @@ steps:
   - id: create-pull-request
     skill: create-pull-request
     purpose: 競合が無い検証済みbranchをpushし、重複のないPull Requestを作る
+    arguments: ["--policy-root=${.deps[\"agent-work-policy\"].root}"]
     needs: [conflict_state]
     conditional_needs:
       - when: conflict_state.has_conflicts

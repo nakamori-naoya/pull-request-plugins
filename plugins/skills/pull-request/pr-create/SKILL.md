@@ -18,9 +18,13 @@ bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 **このコマンドは説明例ではない。必ず実行する。** 失敗したら先へ進まない。
 <!-- END shared:skill-entry/root-only -->
 
-## 1. 公開条件を確認する
+## 1. 公開条件をAgent Work Policyへ委譲する
 
-repositoryの正式な作業規範を読み、pushとPR作成のpermission・human gateを確認する。base、head、remoteを特定し、baseへの直接push、detached HEAD、unmerged entry、対象外の未commit変更があれば停止する。
+呼び出し元から`--policy-root=<Agent Work Policyの解決済み依存root>`を受け取る。これが無い、directoryでない、または`prepare.sh`と`control.py`を持たなければ停止する。cacheや親directoryからpathを推測しない。
+
+受け取った`POLICY_ROOT`だけを使い、`POLICY_CFG=$(bash "$POLICY_ROOT/scripts/prepare.sh" "$(pwd)") || exit 2`で対象repositoryの解決済み設定を得る。`${.workspace.base_branch}`、`${.git.remote}`、`${.pull_request.draft}`はこの設定だけから読む。`control.py`だけにpushとPR作成を委譲し、下流側でpermission・human gate・base・remote・draft・`git` / `gh`公開操作を再実装しない。
+
+公開方針はrepository単位で一つである。Agent Work Policyの`prepare.sh`へ`--scope`は渡さず、scope設定で公開permissionやhuman gateを差し替えない。
 
 baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読む。競合解消結果を受け取った場合は、記録されたhead SHAと現在値、競合なし、検証成功を照合する。未検証を成功扱いしない。
 
@@ -32,9 +36,7 @@ titleとbodyへ目的、主な変更、検証commandと結果、既知の制約�
 
 ## 3. pushして作成する
 
-必要な場合だけ許可されたremoteへ現在branchをpushする。force pushは明示許可なしに行わない。gateがある操作は対象を提示し、承認後だけ実行する。
-
-認証済みGitHub手段で指定baseへのPRを作る。作成後にnumber、URL、head、base、draft状態を再取得し、意図したPRと一致しなければ完了にしない。
+`control.py push`、`control.py pull-request`を順に呼ぶ。`waiting_for_human`のときだけ対象を提示し、承認後に`--approved`を渡す。作成後のPR状態は再取得して照合するが、作成・push・mergeを直接実行しない。
 
 ## 4. 報告する
 
