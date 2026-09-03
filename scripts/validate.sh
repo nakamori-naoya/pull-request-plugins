@@ -253,6 +253,7 @@ while IFS='|' read -r name version rel; do
   ' "$ROOT/$rel/.codex-plugin/plugin.json" "$ROOT/$rel/.claude-plugin/plugin.json" >/dev/null || failed=1
 done < <(jq -r '.plugins[] | [.name,.version,(.source.path | ltrimstr("./"))] | join("|")' "$ROOT/.agents/plugins/marketplace.json")
 bash "$ROOT/scripts/validate-marketplace.sh" "$ROOT" || failed=1
+bash "$ROOT/scripts/test-marketplace-validation.sh" || failed=1
 while IFS= read -r pb; do
   yq -o=json -I=0 '.' "$pb" | jq -e '.version==2 and (.requires|length>0) and all(.requires[]; type=="object" and ((keys|sort)==["marketplace","plugin"]))' >/dev/null || failed=1
   root=$(dirname "$pb")
