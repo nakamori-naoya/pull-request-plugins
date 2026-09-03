@@ -1,6 +1,6 @@
 {
   "name": "pr-review-response",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "PR reviewの評価、採用修正、検証を進め、commitとpushはAgent Work Policyへ委譲する。",
   "author": {
     "name": "NaoyaNakamori"

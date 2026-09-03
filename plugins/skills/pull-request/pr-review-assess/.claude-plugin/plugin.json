@@ -1,7 +1,7 @@
 {
   "name": "pr-review-assess",
   "displayName": "pr-review-assess",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "PR review commentを取得し、関連sourceと照合して採否判断を構造化する。",
   "author": {
     "name": "NaoyaNakamori"

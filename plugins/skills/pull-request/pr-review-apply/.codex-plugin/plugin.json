@@ -1,6 +1,6 @@
 {
   "name": "pr-review-apply",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "採用済みPR review指摘だけをsourceへ反映する。",
   "author": {
     "name": "NaoyaNakamori"

@@ -1,7 +1,7 @@
 {
   "name": "pr-conflict-inspect",
   "displayName": "pr-conflict-inspect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PR branchとbaseの競合を検出し、現行実装、関連履歴、過去PRから両側の意図を復元する。",
   "author": {
     "name": "NaoyaNakamori"
