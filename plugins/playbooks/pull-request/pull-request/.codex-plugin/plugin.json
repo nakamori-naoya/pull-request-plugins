@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Pull Request",
     "shortDescription": "競合を履歴と過去PRから調査・解消し、検証済みbranchからPull Requestを作成する。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "pull-requestを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

@@ -1,3 +1,15 @@
-{"name":"pull-request","owner":{"name":"NaoyaNakamori"},"description":"Pull Requestの競合、作成、review responseを一つのPlaybookパッケージとして配布するmarketplace","plugins":[
-  {"name":"pull-request","source":"./plugins","description":"競合解消、PR作成、review responseのPlaybookを一括提供する","version":"1.0.0"}
-]}
+{
+  "name": "pull-request",
+  "owner": {
+    "name": "NaoyaNakamori"
+  },
+  "description": "Pull Requestの競合、作成、review responseを一つのPlaybookパッケージとして配布するmarketplace",
+  "plugins": [
+    {
+      "name": "pull-request",
+      "source": "./plugins",
+      "description": "競合解消、PR作成、review responseのPlaybookを一括提供する",
+      "version": "2.0.0"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Pr Review Assess",
     "shortDescription": "PR review commentを取得し、関連sourceと照合して採否判断を構造化する。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "pr-review-assessを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }

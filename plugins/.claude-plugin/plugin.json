@@ -1,8 +1,10 @@
 {
   "name": "pull-request",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Pull Requestの競合解消、作成、review response Playbookを一括提供する",
-  "author": {"name": "NaoyaNakamori"},
+  "author": {
+    "name": "NaoyaNakamori"
+  },
   "skills": [
     "./playbooks/pull-request/pull-request",
     "./playbooks/pull-request/pr-review-response",
@@ -28,7 +30,8 @@
         "pr-review-assess": "./skills/pull-request/pr-review-assess",
         "pr-review-apply": "./skills/pull-request/pr-review-apply",
         "pr-review-verify": "./skills/pull-request/pr-review-verify"
-      }
+      },
+      "contractVersion": 1
     }
   }
 }
