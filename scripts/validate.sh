@@ -5,6 +5,10 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plugin-repository-validation.XXXXXX") || exit 2
 trap 'rm -rf "$TMP_ROOT"' EXIT
 failed=0
+python3 "$ROOT/scripts/test-hardening.py" || failed=1
+python3 "$ROOT/scripts/sync-runtime.py" --check || failed=1
+python3 -m unittest discover -s "$ROOT/tests" -p test_verification_cli.py || failed=1
+
 
 validate_dependency_resolution_contract() {
   local resolver="$ROOT/shared/playbook/resolve-dependency.py"

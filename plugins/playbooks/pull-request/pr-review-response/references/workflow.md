@@ -32,7 +32,6 @@ python3 "${PLUGIN_ROOT}/scripts/control.py" gate --config "$CFG_FILE" --name aft
 ```bash
 POLICY_ROOT=$(yq -er '.deps["agent-work-policy"].root' "$CFG_FILE")
 POLICY_CFG=$(bash "$POLICY_ROOT/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE" "$POLICY_CFG"' EXIT
 COMMIT_MESSAGE=$(yq -er '.playbook.git.commit_message' "$CFG_FILE")
 python3 "$POLICY_ROOT/scripts/control.py" commit --config "$POLICY_CFG" \
   --repo "$(pwd)" --paths-file changed-paths.txt --message "$COMMIT_MESSAGE" [--approved]
@@ -45,3 +44,5 @@ Agent Work Policyがpermission、検証、human gateと公開Git実行を判断�
 ## report
 
 `report.enabled: false`なら資料工程をすべてskipする。trueなら`requires`に`write-doc`が必要で、`report.timing`に一致する1工程だけを実行する。資料成果物は直後のgateまたは後続工程の`conditional_needs`で拘束される。
+
+設定生成で返るPOLICY_CFGの絶対pathも実行記録へ残し、別shellに渡す際は明示的に復元する。commit/pushの完了・停止・失敗時は `python3 "$POLICY_ROOT/scripts/run-config.py" cleanup --config "$POLICY_CFG"` でその設定だけを削除する。呼出元のCFG_FILEはplaybook全体の完了・停止時に呼出元のrun-configで削除する。

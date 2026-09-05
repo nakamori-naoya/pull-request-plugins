@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Pr Review Apply",
     "shortDescription": "採用済みPR review指摘だけをsourceへ反映する。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "pr-review-applyを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }
