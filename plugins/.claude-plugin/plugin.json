@@ -7,13 +7,7 @@
   },
   "skills": [
     "./playbooks/pull-request/pull-request",
-    "./playbooks/pull-request/pr-review-response",
-    "./skills/pull-request/pr-conflict-inspect",
-    "./skills/pull-request/pr-conflict-resolve",
-    "./skills/pull-request/pr-create",
-    "./skills/pull-request/pr-review-assess",
-    "./skills/pull-request/pr-review-apply",
-    "./skills/pull-request/pr-review-verify"
+    "./playbooks/pull-request/pr-review-response"
   ],
   "metadata": {
     "harness": {
