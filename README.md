@@ -2,6 +2,43 @@
 
 Pull Requestの競合調査・解消・作成と、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。
 
+## こんなときに使う
+
+**PRを作る、競合を意味に基づいて解く、レビュー指摘へ安全に対応する作業をAIエージェントへ任せたいときに使う。** 公開操作は`agent-work-policy`へ委譲するため、repositoryごとの許可とhuman gateを保ったまま進められる。
+
+- branchの差分、検証結果、既存PRを確認して重複のないPRを作りたい
+- base branchとの競合について、両側の変更意図を先に調べたい
+- 行単位の機械的な選択ではなく、履歴と過去PRに基づいて競合を解消したい
+- review commentをそのまま採用せず、sourceと照合して採否を判断したい
+- 採用した指摘だけを修正し、検証、commit、pushまで進めたい
+
+## どのpluginを使うか
+
+| やりたいこと | 選ぶplugin |
+|---|---|
+| 競合の有無と両側の意図だけを調べる | `pr-conflict-inspect` |
+| 調査結果に基づいて競合を解消する | `pr-conflict-resolve` |
+| 検証済みbranchからPRを作る | `pr-create` |
+| 競合調査・必要な解消・PR作成を一続きで行う | `pull-request` |
+| review commentの採否だけを評価する | `pr-review-assess` |
+| 採用済み指摘だけをsourceへ反映する | `pr-review-apply` |
+| review修正を指定commandで検証する | `pr-review-verify` |
+| 評価から修正、検証、公開まで一続きで行う | `pr-review-response` |
+
+## 利用例
+
+```text
+このbranchの競合を非破壊で調査し、両側の変更意図を説明して。
+```
+
+```text
+repositoryの規約に従って競合を解消し、検証済みPRを作って。
+```
+
+```text
+PR #42のreview commentを評価し、採用する指摘だけを修正して検証して。
+```
+
 ## インストール
 
 ### Codex
