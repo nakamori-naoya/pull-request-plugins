@@ -29,7 +29,6 @@ fi
 <!-- BEGIN shared:skill-entry/config-load -->
 ```bash
 CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-trap 'rm -f "$CFG_FILE"' EXIT
 ```
 
 **このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
@@ -58,3 +57,5 @@ trap 'rm -f "$CFG_FILE"' EXIT
 競合なし、または解消と全検証が成功した場合だけPR作成工程へ進む。title、body、AWP設定から得たdraft、base、remote、`--policy-root="$POLICY_ROOT"`と、競合があった場合は解消結果と資料参照を渡す。
 
 PR URLとnumber、head/base、競合の有無、資料の提示時点とpath、解消方針、検証結果、Agent Work Policyが返したpush・draft・停止・未確認事項を報告する。
+
+設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。

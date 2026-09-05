@@ -5,7 +5,7 @@
   "author": {
     "name": "NaoyaNakamori"
   },
-  "skills": "./skills",
+  "skills": "./",
   "interface": {
     "displayName": "Pr Conflict Resolve",
     "shortDescription": "関連履歴と過去PRから意図を確認し、PR branchの競合を意味に基づいて解消・検証する。",
@@ -16,5 +16,10 @@
       "Skills"
     ],
     "defaultPrompt": "pr-conflict-resolveを使ってこの作業を進めてください。"
+  },
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
   }
 }
