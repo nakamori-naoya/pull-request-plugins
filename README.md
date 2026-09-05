@@ -12,9 +12,9 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 - review commentをそのまま採用せず、sourceと照合して採否を判断したい
 - 採用した指摘だけを修正し、検証、commit、pushまで進めたい
 
-## どのpluginを使うか
+## どの機能を使うか
 
-| やりたいこと | 選ぶplugin |
+| やりたいこと | 選ぶ機能 |
 |---|---|
 | 競合の有無と両側の意図だけを調べる | `pr-conflict-inspect` |
 | 調査結果に基づいて競合を解消する | `pr-conflict-resolve` |
@@ -47,14 +47,7 @@ Codexのpluginコマンドには`--scope`がない。通常の手順はuser単�
 
 ```bash
 codex plugin marketplace add nakamori-naoya/pull-request-plugins
-codex plugin add pr-conflict-inspect@pull-request
-codex plugin add pr-conflict-resolve@pull-request
-codex plugin add pr-create@pull-request
 codex plugin add pull-request@pull-request
-codex plugin add pr-review-assess@pull-request
-codex plugin add pr-review-apply@pull-request
-codex plugin add pr-review-verify@pull-request
-codex plugin add pr-review-response@pull-request
 ```
 
 このrepositoryだけに分離したい場合は、repository専用の`CODEX_HOME`を作り、インストール時と利用時に同じ値を指定する。
@@ -64,14 +57,7 @@ mkdir -p .codex-home
 export CODEX_HOME="$PWD/.codex-home"
 
 codex plugin marketplace add nakamori-naoya/pull-request-plugins
-codex plugin add pr-conflict-inspect@pull-request
-codex plugin add pr-conflict-resolve@pull-request
-codex plugin add pr-create@pull-request
 codex plugin add pull-request@pull-request
-codex plugin add pr-review-assess@pull-request
-codex plugin add pr-review-apply@pull-request
-codex plugin add pr-review-verify@pull-request
-codex plugin add pr-review-response@pull-request
 codex
 ```
 
@@ -93,15 +79,10 @@ repository設定としてインストールする場合は`project`を指定す�
 CLAUDE_PLUGIN_SCOPE=project
 
 claude plugin marketplace add nakamori-naoya/pull-request-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-conflict-inspect@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-conflict-resolve@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-create@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin install pull-request@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-review-assess@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-review-apply@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-review-verify@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install pr-review-response@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
 ```
+
+利用者がインストールするのはこのpackageだけである。競合調査、競合解消、PR作成、review評価・適用・検証と2つのplaybookは同梱し、内部機能を個別のインストール対象にはしない。
 
 ## インストール済みである必要があるplugin
 
@@ -110,7 +91,7 @@ claude plugin install pr-review-response@pull-request --scope "$CLAUDE_PLUGIN_SC
 - `write-doc@write-doc`
 - `agent-work-policy@agent-work-policy`
 
-playbookの依存は`plugin@marketplace`のidentityだけを宣言し、versionは固定しない。開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
+別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
 
 ## 設定の上書きと優先順位
 

@@ -11,7 +11,12 @@ PR URLが得られただけでなく、目的、差分、検証、未確認事�
 
 <!-- BEGIN shared:skill-entry/root-only -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/skills/pull-request/pr-create" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/skills/pull-request/pr-create"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 ```
 

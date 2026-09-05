@@ -11,7 +11,12 @@ review commentを票として数えず、sourceの不変条件と変更意図に
 
 <!-- BEGIN shared:skill-entry/root-only -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/skills/pull-request/pr-review-assess" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/skills/pull-request/pr-review-assess"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 ```
 
