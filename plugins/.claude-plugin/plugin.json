@@ -1,0 +1,34 @@
+{
+  "name": "pull-request",
+  "version": "1.0.0",
+  "description": "Pull Requestの競合解消、作成、review response Playbookを一括提供する",
+  "author": {"name": "NaoyaNakamori"},
+  "skills": [
+    "./playbooks/pull-request/pull-request",
+    "./playbooks/pull-request/pr-review-response",
+    "./skills/pull-request/pr-conflict-inspect",
+    "./skills/pull-request/pr-conflict-resolve",
+    "./skills/pull-request/pr-create",
+    "./skills/pull-request/pr-review-assess",
+    "./skills/pull-request/pr-review-apply",
+    "./skills/pull-request/pr-review-verify"
+  ],
+  "metadata": {
+    "harness": {
+      "installationSurface": "playbook-package",
+      "entryRoot": "./playbooks/pull-request/pull-request",
+      "playbooks": {
+        "pull-request": "./playbooks/pull-request/pull-request",
+        "pr-review-response": "./playbooks/pull-request/pr-review-response"
+      },
+      "internalPlugins": {
+        "pr-conflict-inspect": "./skills/pull-request/pr-conflict-inspect",
+        "pr-conflict-resolve": "./skills/pull-request/pr-conflict-resolve",
+        "pr-create": "./skills/pull-request/pr-create",
+        "pr-review-assess": "./skills/pull-request/pr-review-assess",
+        "pr-review-apply": "./skills/pull-request/pr-review-apply",
+        "pr-review-verify": "./skills/pull-request/pr-review-verify"
+      }
+    }
+  }
+}

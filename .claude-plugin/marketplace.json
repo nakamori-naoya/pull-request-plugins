@@ -1,10 +1,3 @@
-{"name":"pull-request","owner":{"name":"NaoyaNakamori"},"description":"Pull Requestの競合、作成、review responseを扱うmarketplace","plugins":[
-  {"name":"pr-conflict-inspect","source":"./plugins/skills/pull-request/pr-conflict-inspect","description":"PR競合を調査する","version":"0.1.1"},
-  {"name":"pr-conflict-resolve","source":"./plugins/skills/pull-request/pr-conflict-resolve","description":"PR競合を解消する","version":"0.1.1"},
-  {"name":"pr-create","source":"./plugins/skills/pull-request/pr-create","description":"検証済みbranchからPRを作る","version":"0.2.1"},
-  {"name":"pull-request","source":"./plugins/playbooks/pull-request/pull-request","description":"競合調査からPR作成までを進める","version":"0.4.1"},
-  {"name":"pr-review-assess","source":"./plugins/skills/pull-request/pr-review-assess","description":"PR reviewを評価する","version":"0.1.4"},
-  {"name":"pr-review-apply","source":"./plugins/skills/pull-request/pr-review-apply","description":"採用したreviewを適用する","version":"0.1.5"},
-  {"name":"pr-review-verify","source":"./plugins/skills/pull-request/pr-review-verify","description":"review適用結果を検証する","version":"0.1.4"},
-  {"name":"pr-review-response","source":"./plugins/playbooks/pull-request/pr-review-response","description":"review評価、修正、検証、公開を進める","version":"0.4.1"}
+{"name":"pull-request","owner":{"name":"NaoyaNakamori"},"description":"Pull Requestの競合、作成、review responseを一つのPlaybookパッケージとして配布するmarketplace","plugins":[
+  {"name":"pull-request","source":"./plugins","description":"競合解消、PR作成、review responseのPlaybookを一括提供する","version":"1.0.0"}
 ]}

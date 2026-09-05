@@ -9,7 +9,12 @@ description: repositoryと検証command一覧を受け取り、PR review修正�
 
 <!-- BEGIN shared:skill-entry/root-only -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/skills/pull-request/pr-review-verify" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/skills/pull-request/pr-review-verify"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 ```
 

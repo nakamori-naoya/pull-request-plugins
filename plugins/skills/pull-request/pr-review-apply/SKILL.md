@@ -11,7 +11,12 @@ description: 採否を含むPR review評価JSONを検証し、acceptされた指
 
 <!-- BEGIN shared:skill-entry/root-only -->
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
+if [ -d "${BUNDLE_ROOT}/skills/pull-request/pr-review-apply" ]; then
+  PLUGIN_ROOT="${BUNDLE_ROOT}/skills/pull-request/pr-review-apply"
+else
+  PLUGIN_ROOT="${BUNDLE_ROOT}"
+fi
 bash "${PLUGIN_ROOT}/scripts/prepare.sh" --root-only >/dev/null || exit 2
 ```
 
