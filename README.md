@@ -12,18 +12,13 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 - review commentをそのまま採用せず、sourceと照合して採否を判断したい
 - 採用した指摘だけを修正し、検証、commit、pushまで進めたい
 
-## どの機能を使うか
+## 公開入口を選ぶ
 
-| やりたいこと | 選ぶ機能 |
+次の入口から依頼します。内部のスキルや処理は、入口が必要に応じて呼び出します。
+
+| やりたいこと | 公開入口 |
 |---|---|
-| 競合の有無と両側の意図だけを調べる | `pr-conflict-inspect` |
-| 調査結果に基づいて競合を解消する | `pr-conflict-resolve` |
-| 検証済みbranchからPRを作る | `pr-create` |
-| 競合調査・必要な解消・PR作成を一続きで行う | `pull-request` |
-| review commentの採否だけを評価する | `pr-review-assess` |
-| 採用済み指摘だけをsourceへ反映する | `pr-review-apply` |
-| review修正を指定commandで検証する | `pr-review-verify` |
-| 評価から修正、検証、公開まで一続きで行う | `pr-review-response` |
+
 
 ## 利用例
 
@@ -41,48 +36,72 @@ PR #42のreview commentを評価し、採用する指摘だけを修正して検
 
 ## インストール
 
+インストールするのは`pull-request@pull-request`です。外部の工程を実行するため、`write-doc@write-doc`、`agent-work-policy@agent-work-policy`も必要です。下のコマンドには、それらも含めています。
+
+内部のスキルは同梱されています。個別にインストールせず、公開入口から利用してください。
+
 ### Codex
 
-Codexのpluginコマンドには`--scope`がない。通常の手順はuser単位でmarketplaceとpluginを登録する。
+利用するCodexと同じ設定環境で実行してください。
 
 ```bash
+codex plugin marketplace add nakamori-naoya/write-doc-plugins
+codex plugin add write-doc@write-doc
+codex plugin marketplace add nakamori-naoya/agent-work-policy-plugins
+codex plugin add agent-work-policy@agent-work-policy
 codex plugin marketplace add nakamori-naoya/pull-request-plugins
 codex plugin add pull-request@pull-request
+codex plugin list
 ```
 
-このrepositoryだけに分離したい場合は、repository専用の`CODEX_HOME`を作り、インストール時と利用時に同じ値を指定する。
-
-```bash
-mkdir -p .codex-home
-export CODEX_HOME="$PWD/.codex-home"
-
-codex plugin marketplace add nakamori-naoya/pull-request-plugins
-codex plugin add pull-request@pull-request
-codex
-```
-
-`CODEX_HOME`には認証、設定、ログ、session、plugin metadataも保存されるため、このdirectoryはGit管理しない。
+一覧で導入先を確認し、新しい会話で利用してください。
 
 ### Claude Code
 
-Claude Codeは次のscopeを選べる。
-
-| scope | 対象 |
-|---|---|
-| `user` | user全体。省略時の既定値 |
-| `project` | このrepositoryで有効にする設定をGitでチーム共有する |
-| `local` | このrepositoryで有効にするが、Git共有せず自分だけで使う |
-
-repository設定としてインストールする場合は`project`を指定する。`CLAUDE_PLUGIN_SCOPE`を`user`または`local`へ変えれば、同じ手順でscopeを切り替えられる。
+次は自分の全プロジェクトで使う例です。このプロジェクトのチームで共有する場合は`project`、このプロジェクトで自分だけが使う場合は`local`に変更し、利用先のディレクトリで実行してください。
 
 ```bash
-CLAUDE_PLUGIN_SCOPE=project
-
+CLAUDE_PLUGIN_SCOPE=user
+claude plugin marketplace add nakamori-naoya/write-doc-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install write-doc@write-doc --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin marketplace add nakamori-naoya/agent-work-policy-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install agent-work-policy@agent-work-policy --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin marketplace add nakamori-naoya/pull-request-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin install pull-request@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin list
 ```
 
-利用者がインストールするのはこのpackageだけである。競合調査、競合解消、PR作成、review評価・適用・検証と2つのplaybookは同梱し、内部機能を個別のインストール対象にはしない。
+一覧で導入を確認し、Claude Codeを再起動してください。すでに導入しているパッケージは、次の更新手順を使ってください。
+
+## 更新する
+
+GitHubから登録したmarketplaceを更新し、その公開パッケージを更新します。新規インストールと同じCodexの設定環境、Claude Codeの適用範囲を使ってください。
+
+### Codex
+
+```bash
+codex plugin marketplace upgrade pull-request
+codex plugin add pull-request@pull-request
+codex plugin list
+```
+
+更新後は新しい会話で確認してください。ローカルのパスからmarketplaceを登録した場合は、Git版の更新コマンドではなく、その登録先のソースを更新してから追加し直します。
+
+### Claude Code
+
+```bash
+# インストール時に合わせてuser / project / localを選ぶ
+CLAUDE_PLUGIN_SCOPE=user
+claude plugin marketplace update pull-request
+claude plugin update pull-request@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin list
+```
+
+更新後はClaude Codeを再起動してください。外部の依存パッケージも使っている場合は、それぞれのREADMEの更新手順を実行してください。
+
+marketplaceの取得と、インストール済みパッケージの更新は分けて確認します。同じバージョンとして公開された変更は、更新コマンドだけでは反映されない場合があります。「最新」と表示された場合は公開バージョンを確認し、キャッシュ内のファイルを直接編集しないでください。
+
+コマンドは2026-09-06時点のCLIヘルプと、[Codexのmarketplace管理](https://developers.openai.com/plugins/build/plugins)、[Claude Codeの更新仕様](https://code.claude.com/docs/en/plugins-reference#plugin-update)を確認しています。
 
 ## インストール済みである必要があるplugin
 
