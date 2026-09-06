@@ -14,7 +14,7 @@ requires:
   - {plugin: agent-work-policy, marketplace: agent-work-policy}
 
 # 下段どうしをつなぐ契約。**上段が持つ。**
-# assess が出し apply が受ける JSON の形で、両者はこの一覧の写しを実装に持つ。
+# 評価工程が出し、適用工程が受ける JSON の形で、両者はこの一覧の写しを実装に持つ。
 # 写しがずれると「前工程が通したものを次工程が落とす」事故になるので、lint が一致を検査する。
 contract:
   # assessment_root/comment: 評価JSONに必須のfield。decision: 許される採否値。
@@ -25,13 +25,13 @@ contract:
 report:
   enabled: false
   timing: before_commit
-# permissions: review取込と修正だけをこのplaybookが判断する。公開Git操作は
-# Agent Work Policyが唯一の所有者である。
+# permissions: review取込と修正だけをこのplaybookが判断する。公開Git操作の許可は
+# 委譲先のplaybookが判断する。
 permissions:
   review_import: true
   modify: true
 # gates: review判断と修正だけをこのplaybookが扱う。commit/pushのgateは
-# Agent Work Policyの解決済み設定で判定する。
+# 委譲先のplaybookが判定し、その公開出力で承認待ちを知る。
 gates:
   after_assessment: true
   before_modify: true
@@ -44,11 +44,12 @@ git:
   require_clean_start: true
   commit_message: Address accepted PR review feedback
 # stepsは記載順に実行する。
-# script/skill/playbook: 呼ぶ処理。needs: 開始条件。provides: 完了時の成果物。
+# skill/script: 自分のpackage内の処理。playbook: 外部pluginの公開playbook。
+# input: その1回の呼び出しへ渡す公開入力。needs: 開始条件。provides: 完了時の成果物。
 # when: 条件が真のときだけ実行。conditional_needs: 同じ条件のときだけ増える開始条件。
 steps:
   - id: preflight
-    script: scripts/control.py
+    script: scripts/review-gate.py
     purpose: repositoryと開始時worktree状態を検査する
     provides: [baseline]
   - id: assess
@@ -57,7 +58,7 @@ steps:
     needs: [baseline]
     provides: [assessment]
   - id: assessment-gate
-    script: scripts/control.py
+    script: scripts/review-gate.py
     purpose: 評価結果を人間へ提示し、設定されたgateを通す
     needs: [assessment]
     provides: [assessment_approved]
@@ -68,7 +69,7 @@ steps:
     needs: [assessment_approved]
     provides: [review_report_after_assessment]
   - id: modify-gate
-    script: scripts/control.py
+    script: scripts/review-gate.py
     purpose: 修正許可と修正前gateを確認する
     needs: [assessment_approved]
     conditional_needs:
@@ -81,7 +82,7 @@ steps:
     needs: [assessment, modify_approved]
     provides: [changes, change_report]
   - id: modified-gate
-    script: scripts/control.py
+    script: scripts/review-gate.py
     purpose: 修正差分を人間へ提示し、修正後gateを通す
     needs: [changes, change_report]
     provides: [changes_approved]
@@ -97,14 +98,14 @@ steps:
     needs: [assessment, change_report, verification]
     provides: [review_report_before_commit]
   - id: commit
-    script: scripts/control.py
-    plugin: agent-work-policy
-    purpose: Agent Work Policyへ限定path、message、検証を渡してcommitする
+    playbook: agent-work-policy
+    input: {action: commit}
+    purpose: 限定したpathとmessageを公開入力として渡し、permissionとhuman gateに従ってcommitする
     needs: [verification]
     conditional_needs:
       - when: report.enabled && report.timing == before_commit
         needs: [review_report_before_commit]
-    provides: [commit]
+    provides: [commit, gate_state, workspace]
   - id: report-before-push
     playbook: write-doc
     when: report.enabled && report.timing == before_push
@@ -112,14 +113,14 @@ steps:
     needs: [assessment, change_report, verification, commit]
     provides: [review_report_before_push]
   - id: push
-    script: scripts/control.py
-    plugin: agent-work-policy
-    purpose: Agent Work Policyへ現在branchを渡してpushする
+    playbook: agent-work-policy
+    input: {action: push}
+    purpose: permissionとhuman gateに従って作業branchをpushする
     needs: [commit]
     conditional_needs:
       - when: report.enabled && report.timing == before_push
         needs: [review_report_before_push]
-    provides: [pushed_branch]
+    provides: [pushed_branch, gate_state]
   - id: report-after-push
     playbook: write-doc
     when: report.enabled && report.timing == after_push

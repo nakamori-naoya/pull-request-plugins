@@ -21,11 +21,18 @@ verification:
   commands: ["git diff --check"]
 
 # stepsは記載順に実行する。
-# when: 実行時成果または設定が真のときだけ実行する。
+# skill/script: 自分のpackage内の処理。playbook: 外部pluginの公開playbook。
+# input: その1回の呼び出しへ渡す公開入力。when: 実行時成果または設定が真のときだけ実行する。
 steps:
+  - id: workspace
+    playbook: agent-work-policy
+    input: {action: inspect}
+    purpose: 何も変えずに、いまの作業場所と状態（作業branch、clean、baseの有無、開いているPR）を受け取る
+    provides: [workspace, workspace_state, gate_state]
   - id: inspect-conflicts
     skill: inspect-pr-conflicts
     purpose: 現行実装、関連commit、過去PRから競合と両側の意図を調べる
+    needs: [workspace, workspace_state]
     provides: [conflict_state, conflict_assessment]
   - id: report-before-resolution
     playbook: write-doc
@@ -54,11 +61,10 @@ steps:
     purpose: 起きていた競合、採った方針、修正、検証を解消後の資料にする
     needs: [conflict_state, conflict_assessment, conflict_resolution, conflict_verification]
     provides: [conflict_resolution_report]
-  - id: create-pull-request
+  - id: prepare-pull-request
     skill: create-pull-request
-    purpose: 競合が無い検証済みbranchをpushし、重複のないPull Requestを作る
-    arguments: ["--policy-root=${.deps[\"agent-work-policy\"].root}"]
-    needs: [conflict_state]
+    purpose: 競合が無い検証済みbranchから、重複のないPull Requestのtitleとbodyを組み立てる
+    needs: [workspace, workspace_state, conflict_state]
     conditional_needs:
       - when: conflict_state.has_conflicts
         needs: [conflict_resolution, conflict_verification]
@@ -66,4 +72,27 @@ steps:
         needs: [conflict_proposal_approved]
       - when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
         needs: [conflict_resolution_report]
-    provides: [pull_request]
+    provides: [pr_title, pr_body_file]
+  - id: push
+    playbook: agent-work-policy
+    input: {action: push}
+    purpose: permissionとhuman gateに従って検証済みbranchをpushする
+    needs: [pr_title, pr_body_file]
+    provides: [pushed_branch, gate_state]
+  - id: create-pull-request
+    playbook: agent-work-policy
+    input: {action: pull-request}
+    purpose: permissionとhuman gateに従ってPull Requestを作る
+    needs: [pushed_branch, pr_title, pr_body_file]
+    provides: [pull_request, gate_state]
+  - id: approve-ready-for-review
+    script: scripts/gate.sh
+    purpose: 内部レビュー完了の明示があるまでレビュー受付への遷移を止める
+    needs: [pull_request]
+    provides: [internal_review_complete]
+  - id: ready-for-review
+    playbook: agent-work-policy
+    input: {action: ready-for-review}
+    purpose: 内部レビュー完了を確認した下書きPull Requestをレビュー受付へ遷移する
+    needs: [pull_request, internal_review_complete]
+    provides: [review_accepting, gate_state]

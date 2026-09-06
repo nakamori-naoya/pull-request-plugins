@@ -30,9 +30,9 @@ git:
   commit_message: Address accepted PR review feedback
 ```
 
-この設定のpermissionがfalseならreview取込・修正を実行しない。gateがtrueなら、明示承認を得るまで次工程へ進まない。commit/pushはこの設定で判断せず、Agent Work Policyの解決済み設定と`control.py`だけを使う。
+この設定のpermissionがfalseならreview取込・修正を実行しない。gateがtrueなら、明示承認を得るまで次工程へ進まない。commit/pushはこの設定で判断せず、`agent-work-policy`の公開playbookへ1呼び出し1操作で委譲し、その公開出力だけを読む。
 
-`requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時にmanifest identityと必要なskillまたはplaybookを検査する。
+`requires`は`plugin`と`marketplace`のidentityだけを持ち、versionは固定しない。解決時にmanifest identityと公開playbookの存在を検査する。外部の`write-doc`と`agent-work-policy`は公開playbookとしてだけ使い、その入口・入力・出力・保証以外には依存しない。
 
 `report.enabled`がfalseなら資料を作らず`write-doc`も呼ばない。`write-doc@write-doc`は完全設定の依存に残す。trueなら`timing`は`after_assessment`、`before_commit`、`before_push`、`after_push`のいずれかで、該当位置にだけ資料を作る。
 
@@ -48,11 +48,11 @@ report:
   timing: before_push
 ```
 
-評価・修正・検証・資料化はそれぞれ自己完結skillが担う。playbookはreview固有の順序、needs/provides、permission、gateだけを拘束する。公開Git操作はAgent Work Policyが所有する。
+評価・修正・検証はそれぞれ自己完結skillが担い、資料化と公開Git操作は外部の公開playbookへ委譲する。playbookはreview固有の順序、needs/provides、permission、gateだけを拘束する。
 
 ## 互換性と移行上の注意
 
-公開操作はAgent Work Policyの`workspace.branch_prefix`（既定は`agent/`）を満たすbranchだけで実行される。人間が作成した既存PRのbranchでreview対応を行う場合、prefix外ならpolicyが停止する。既存の`pr-review-response.config.yml`に削除済みの`permissions.commit`、`permissions.push`、`gates.before_commit`、`gates.before_push`、`git.remote`が残る場合も、未知キーとしてfail closedする。
+公開操作は委譲先が許すbranchでだけ実行される。人間が作成した既存PRのbranchでreview対応を行う場合、委譲先が受け付けなければそこで停止する。既存の`pr-review-response.config.yml`に削除済みの`permissions.commit`、`permissions.push`、`gates.before_commit`、`gates.before_push`、`git.remote`が残る場合も、未知キーとしてfail closedする。
 
 ## 終了条件
 
