@@ -111,7 +111,20 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 - `write-doc@write-doc`
 - `agent-work-policy@agent-work-policy`
 
-別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと必要なskillを検査する。
+別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと公開playbookの存在を検査する。
+
+外部pluginから使ってよいのは、その公開playbookの4点だけである。参照の形は`${.deps.<論理依存名>.root}`と`${.deps.<論理依存名>.entry}`の**2つ**しかない。
+
+| # | 参照形 | 用途 |
+|---|---|---|
+| E1 | `${.deps.<x>.root}/scripts/prepare.sh <repo> --input=<絶対path> [--scope=<dir>] [--bindings=<lock>]` | 入力を渡して実行設定を解決する |
+| E2 | `${.deps.<x>.root}/playbook.yml` | 段取りの宣言を読む |
+| E3 | `${.deps.<x>.root}/scripts/resolve.sh` | `prepare.sh` が内部で呼ぶ入口 |
+| E4 | `${.deps.<x>.entry}` | 公開playbook入口の`SKILL.md`の絶対path。実行手順はここに従う |
+
+呼び出しは2段である。消費側がE1で実行設定を解決し、得た絶対pathをE4の`SKILL.md`へ渡して実行させ、入力に書いた書き込み先から公開出力を受け取る。**依存先は`prepare.sh`を実行し直さない。**
+
+外部pluginを`skill:`や`script:`のstepで指すこと、`${.deps.<x>.root}`からE1〜E3以外のpathを組み立てること、`${.deps.<x>.skills.<名前>}`のようなskill名で入口を指すこと、ブラケット形で綴ること、外部の設定ファイル・設定キー・内部の名前を語ることは禁止する。`bash scripts/lint-consumer-contract.py`がこの規則を静的に検査する。
 
 ## 設定の上書きと優先順位
 
@@ -147,6 +160,8 @@ version更新は `python3 scripts/release.py --plugin <公開plugin名> --versio
 
 ### 破壊的変更と移行
 
-公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
+公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。
+
+外部pluginの公開面をplaybook 1枚に限る規則へ移行した。第2入口`mark-ready-for-review`は廃止し、下書きPRのレビュー受付への遷移は`open-pull-request`の最後の工程が委譲する。このrepository自身が`agent-work-policy`を使うための設定fileは、委譲先が公開するinstall手順に合わせて置き換えた。互換経路は用意しない。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
 
 検証CLIのstdoutはJSONのみとなり、commandの出力はresults[].log_pathへ移る。呼出元はstdoutをログとして連結せずJSONとして読み、失敗時のexit_codeとlog_pathを参照する。
