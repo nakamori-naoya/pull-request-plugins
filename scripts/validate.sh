@@ -4,6 +4,13 @@ set -uo pipefail
 # 検査は素の環境から始める。呼び出した人の開発用mapやtest cacheが混ざると、
 # 「実配布物へ解決できている」ことを確かめられない。必要な検査だけが自分で設定する。
 unset HARNESS_PLUGIN_DEV_ROOTS HARNESS_PLUGIN_CACHE_ROOT
+# **runtimeを開発環境から拾わせない。** resolverはHARNESS_PLUGIN_RUNTIMEが無いと
+# CLAUDE_PLUGIN_ROOT / CODEX_HOME や利用者のinstalled-cacheからruntimeを推測する。
+# 手元にそれらがあると通り、何も入っていないCI runnerでは
+# dependency-runtime-unresolved で落ちる。**検査するruntimeはここで明示する。**
+# 両runtimeを見るprobeは、その場で自分のHARNESS_PLUGIN_RUNTIMEを渡して上書きする。
+unset CLAUDE_PLUGIN_ROOT CODEX_HOME CLAUDE_PLUGIN_CACHE CODEX_PLUGIN_CACHE
+export HARNESS_PLUGIN_RUNTIME=codex
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plugin-repository-validation.XXXXXX") || exit 2
 trap 'rm -rf "$TMP_ROOT"' EXIT
