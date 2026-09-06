@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 公開Git操作は、外部pluginの公開playbookへ1呼び出し1actionで委譲する形だけを許す。
+# 外部pluginのscript実行、外部rootからのpath組み立て、外部設定キーの複製は受け付けない。
 set -euo pipefail
 jq -e '
   (keys|sort)==["conflict_report","description","instructions","name","requires","steps","verification","version"] and
@@ -15,6 +17,13 @@ jq -e '
     .when=="conflict_state.has_conflicts && conflict_report.timing == before_resolution")]|length==1) and
   ([.steps[] | select(.skill=="inspect-pr-conflicts")]|length==1) and
   ([.steps[] | select(.skill=="resolve-pr-conflicts")]|length==1) and
-  ([.steps[] | select(.skill=="create-pull-request")]
-    | length==1 and .[0].arguments==["--policy-root=${.deps[\"agent-work-policy\"].root}"])
+  ([.steps[] | select(.skill=="create-pull-request")]|length==1) and
+  ([.steps[] | select(.playbook=="agent-work-policy") | .input.action])==
+    ["inspect","push","pull-request","ready-for-review"] and
+  all(.steps[] | select(.playbook=="agent-work-policy");
+    (.input|type=="object" and keys==["action"] and (.action|type=="string" and length>0)) and
+    (has("script")|not) and (has("skill")|not)) and
+  all(.steps[]; (has("plugin")|not) and (has("arguments")|not) and (has("actions")|not)) and
+  all(.steps[] | select(.script!=null); .script|startswith("scripts/")) and
+  ((.steps|tostring|contains(".deps"))|not)
 ' "$1" >/dev/null || { echo "[error] pull-request固有schemaが不正" >&2; exit 2; }

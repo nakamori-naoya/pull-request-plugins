@@ -20,7 +20,7 @@ conflict_report:
   timing: after_resolution   # 解消後に競合、方針、修正、検証を資料化して示す
 ```
 
-[同梱の完全設定](playbook.yml)には`version`、`name`、`description`、`instructions`、`requires`、`conflict_report`、`verification`、`steps`が必要である。`base_branch`、`remote`、`draft`はこの設定に置かず、Agent Work Policyが対象repository向けに解決した設定だけを使う。競合調査だけを行う場合もこの依存が必須であり、Agent Work Policy設定が無ければ停止する。
+[同梱の完全設定](playbook.yml)には`version`、`name`、`description`、`instructions`、`requires`、`conflict_report`、`verification`、`steps`が必要である。baseとremoteと下書き設定はこの設定に置かない。最初の工程が`agent-work-policy`の公開出力として返す作業場所の値だけを使う。この工程は**何も変えない照会**なので、既存の作業branchでもworking treeが汚れていても止まらない。競合調査だけを行う場合もこの依存が必須である。
 
 ## 入力と出力
 
@@ -34,10 +34,10 @@ conflict_report:
 - 競合、marker、検証失敗が残る
 - repositoryのpermissionまたはhuman gateを満たさない
 
-必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`、`agent-work-policy@agent-work-policy`。公開Git操作のpermission・gate・実行は最後のpluginへ委譲する。versionは固定せず、解決先のmanifest identityと必要なskillまたはplaybookを検査する。
+必要plugin: `pr-conflict-inspect@pull-request`、`pr-conflict-resolve@pull-request`、`pr-create@pull-request`、`write-doc@write-doc`、`agent-work-policy@agent-work-policy`。外部の2つは公開playbookとしてだけ使い、その入口・入力・出力・保証以外には依存しない。公開Git操作のpermission・gate・実行は`agent-work-policy`へ委譲する。versionは固定せず、解決先のmanifest identityと公開playbookの存在を検査する。
 
-## 下書きPRをレビュー受付へ遷移する入口
+## 下書きPRをレビュー受付へ遷移する工程
 
-`mark-ready-for-review`は、このpluginの第2入口skillである。`open-pull-request` playbookのstepには含めないため、PR作成直後に下書きを無条件で解除しない。利用者またはmanagerがPR番号、Agent Work Policy root、内部レビュー完了を明示した場合だけ実行し、時点は内部レビュー完了後かつmerge readiness判定前である。
+レビュー受付への遷移は、この段取りの最後の工程である。PR作成直後には実行せず、利用者またはmanagerが内部レビュー完了を明示したときだけ通す。時点は内部レビュー完了後かつmerge readiness判定前である。
 
-Policyが公開済みPRを返した場合は変更せず成功となる。Policyの呼び出し失敗、または`ready-for-review` capabilityが無い依存先では停止する。下流はpermission、gate、PR照合、下書き判定、`gh pr ready`を持たない。
+遷移そのものは`agent-work-policy`の公開playbookへ委譲する。この段取りはpermission、gate、PR照合、下書き判定、`gh pr ready`を持たない。委譲先が公開済みPRを返した場合は変更せず成功となる。委譲先が停止した場合はここも停止する。

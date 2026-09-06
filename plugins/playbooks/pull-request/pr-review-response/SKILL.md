@@ -1,6 +1,6 @@
 ---
 name: respond-to-pr-review
-description: 指定GitHub PRのreview commentを取得・評価し、人間gateで採否を確認して、採用分だけを修正・検証する。commit・pushはAgent Work Policyへ委譲する。reviewへの返信やresolveはしない。
+description: 指定GitHub PRのreview commentを取得・評価し、人間gateで採否を確認して、採用分だけを修正・検証する。commit・pushは`agent-work-policy`の公開playbookへ委譲する。reviewへの返信やresolveはしない。
 ---
 
 # respond-to-pr-review
@@ -34,15 +34,15 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
 <!-- END shared:skill-entry/config-load -->
 
-`${.instructions.execution.directive}`に従い`${.playbook.steps}`を上から実行する。`${.playbook.permissions}`と`${.playbook.gates}`はreview取込・修正だけに使う。公開Git操作のpermission、human gate、検証、実行はAgent Work Policyだけに委譲する。
+`${.instructions.execution.directive}`に従い`${.playbook.steps}`を上から実行する。`${.playbook.permissions}`と`${.playbook.gates}`はreview取込・修正だけに使う。公開Git操作のpermission、human gate、検証、実行は`playbook:`工程として委譲する。
 
-公開方針はrepository単位で一つである。Agent Work Policyの`prepare.sh`へ`--scope`は渡さず、scope設定で公開permissionやhuman gateを差し替えない。
+**自分のpackageの工程（`skill:` と `script:`）を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。渡さなければ効かない。入れ子の段取りへは、受け取ったものをそのまま渡す（自分の名前で作り直さない）。
 
-**各工程を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。渡さなければ効かない。入れ子の段取りへは、受け取ったものをそのまま渡す（自分の名前で作り直さない）。
+公開方針はrepository単位で一つである。公開Git操作の委譲へは`--scope`を渡さず、scope設定で公開permissionやhuman gateを差し替えない。
 
 ## 2. 評価する
 
-`control.py preflight`でrepositoryと開始時worktreeを検査する。review取込前に`control.py permission review_import`を通し、`assess-pr-review`を呼ぶ。評価成果を提示する。
+`review-gate.py preflight`でrepositoryと開始時worktreeを検査する。review取込前に`review-gate.py permission review_import`を通し、`assess-pr-review`を呼ぶ。評価成果を提示する。
 
 `after_assessment` gateを通す。acceptが0件なら変更せず報告して終了する。
 
@@ -56,9 +56,20 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 
 `verify-pr-review`を呼ぶ。失敗したらcommitしない。
 
-設定された時点でreportが有効なら`write-doc`を呼び、その成果物を後続工程へ渡す。Agent Work Policyの依存rootを`${.deps.agent-work-policy.root}`から取得し、解決済み設定と`control.py commit`、`control.py push`だけを使う。`waiting_for_human`が返った場合だけ、対象を示して承認を得た後に同じcommandへ`--approved`を付ける。公開操作のための独自permission・gate・`git`・`gh`は追加しない。
+設定された時点でreportが有効なら資料化の段取りを呼び、その成果物を後続工程へ渡す。
 
-review固有のcommandとgateの呼び方は[実行契約](references/workflow.md)に従う。公開操作の契約はAgent Work Policyを正本とする。
+commitとpushは、それぞれ**1呼び出し1操作**として`agent-work-policy`の公開playbookへ委譲する。**呼び出しは2段で、`prepare.sh` は1回だけ実行する。**契約が定める入力YAMLを一時領域へ書き、自分で実行設定を解決する。
+
+```bash
+POLICY_CFG=$(bash "${.deps.agent-work-policy.root}/scripts/prepare.sh" "$(pwd)" \
+  --input="$INPUT_FILE" --bindings="${.resolution.bindings_lock}") || exit 2
+```
+
+そのうえで `${.deps.agent-work-policy.entry}`（公開playbook入口の`SKILL.md`の絶対path）の手順に、いま得た `$POLICY_CFG` を渡して実行し、入力に書いた書き込み先から公開出力を読む。委譲先は `prepare.sh` を実行し直さない。**委譲先の中のscript、引数、exit code、設定キーは扱わない。** `entry_skill` は表示用であり、その名前で分岐しない。
+
+出力が承認待ちを示した場合だけ、同じ出力に含まれる承認対象を提示し、実際に承認を得てから同じ操作を承認済みとして呼び直す。公開操作のための独自permission・gate・`git`・`gh`は追加しない。
+
+review固有のcommandとgateの呼び方、委譲の手順は[実行契約](references/workflow.md)に従う。公開操作の入力・出力・保証は委譲先が公開する契約を正本とする。
 
 ## 5. 報告する
 
