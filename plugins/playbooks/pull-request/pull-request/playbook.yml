@@ -3,6 +3,7 @@
 version: 2
 name: pull-request
 description: 競合を調査・解消し、検証済みbranchからPull Requestを作成する
+inputs: [repository_path, user_input, document_destination]
 instructions:
   execution:
     directive: repositoryのpermissionとhuman gateを守り、現在の実装と関連履歴を確認してstepsを上から順に実行する
@@ -22,32 +23,33 @@ verification:
 
 # stepsは記載順に実行する。
 # skill/script: 自分のpackage内の処理。playbook: 外部pluginの公開playbook。
-# input: その1回の呼び出しへ渡す公開入力。when: 実行時成果または設定が真のときだけ実行する。
+# 外部playbookの完全な入力objectは同じagentがneedsと利用者入力から実行時に組み立てる。
+# YAMLへ部分objectや動的placeholderを置かない。when: 実行時成果または設定が真のときだけ実行する。
 steps:
   - id: workspace
     playbook: agent-work-policy
-    input: {action: inspect}
     purpose: 何も変えずに、いまの作業場所と状態（作業branch、clean、baseの有無、開いているPR）を受け取る
+    needs: [repository_path]
     provides: [workspace, workspace_state, gate_state]
   - id: inspect-conflicts
-    skill: inspect-pr-conflicts
+    agent_work: invoking_agent
     purpose: 現行実装、関連commit、過去PRから競合と両側の意図を調べる
     needs: [workspace, workspace_state]
     provides: [conflict_state, conflict_assessment]
   - id: report-before-resolution
     playbook: write-doc
     when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
-    purpose: 競合内容と推奨解消方針を提案資料にして解消前に利用者へ示す
-    needs: [conflict_state, conflict_assessment]
-    provides: [conflict_proposal]
+    purpose: 同じagentが競合内容と推奨解消方針をkind:textのmaterialにし、公開保存先へ提案資料として保存して解消前に利用者へ示す
+    needs: [conflict_state, conflict_assessment, document_destination]
+    provides: [status, path, reason]
   - id: approve-conflict-proposal
     script: scripts/gate.sh
     when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
     purpose: 提案資料を示した後、利用者の明示承認まで競合解消を止める
-    needs: [conflict_proposal]
+    needs: [path]
     provides: [conflict_proposal_approved]
   - id: resolve-conflicts
-    skill: resolve-pr-conflicts
+    agent_work: invoking_agent
     when: conflict_state.has_conflicts
     purpose: 調査した意図と現在状態を照合し、競合を解消して検証する
     needs: [conflict_state, conflict_assessment]
@@ -58,11 +60,11 @@ steps:
   - id: report-after-resolution
     playbook: write-doc
     when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
-    purpose: 起きていた競合、採った方針、修正、検証を解消後の資料にする
-    needs: [conflict_state, conflict_assessment, conflict_resolution, conflict_verification]
-    provides: [conflict_resolution_report]
+    purpose: 同じagentが起きていた競合、採った方針、修正、検証をkind:textのmaterialにし、公開保存先へ解消後の資料として保存する
+    needs: [conflict_state, conflict_assessment, conflict_resolution, conflict_verification, document_destination]
+    provides: [status, path, reason]
   - id: prepare-pull-request
-    skill: create-pull-request
+    agent_work: invoking_agent
     purpose: 競合が無い検証済みbranchから、重複のないPull Requestのtitleとbodyを組み立てる
     needs: [workspace, workspace_state, conflict_state]
     conditional_needs:
@@ -71,17 +73,15 @@ steps:
       - when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
         needs: [conflict_proposal_approved]
       - when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
-        needs: [conflict_resolution_report]
+        needs: [path]
     provides: [pr_title, pr_body_file]
   - id: push
     playbook: agent-work-policy
-    input: {action: push}
     purpose: permissionとhuman gateに従って検証済みbranchをpushする
     needs: [pr_title, pr_body_file]
     provides: [pushed_branch, gate_state]
   - id: create-pull-request
     playbook: agent-work-policy
-    input: {action: pull-request}
     purpose: permissionとhuman gateに従ってPull Requestを作る
     needs: [pushed_branch, pr_title, pr_body_file]
     provides: [pull_request, gate_state]
@@ -92,7 +92,6 @@ steps:
     provides: [internal_review_complete]
   - id: ready-for-review
     playbook: agent-work-policy
-    input: {action: ready-for-review}
     purpose: 内部レビュー完了を確認した下書きPull Requestをレビュー受付へ遷移する
     needs: [pull_request, internal_review_complete]
     provides: [review_accepting, gate_state]

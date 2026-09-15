@@ -3,6 +3,7 @@
 version: 2
 name: pr-review-response
 description: PR reviewを評価し、採用分だけを修正・検証・commit・pushする
+inputs: [repository_path, pull_request, user_input, document_destination]
 instructions:
   execution:
     directive: permissionsとhuman gateを厳守し、stepsを上から順に実行する
@@ -51,33 +52,40 @@ steps:
   - id: preflight
     script: scripts/review-gate.py
     purpose: repositoryと開始時worktree状態を検査する
+    needs: [repository_path, pull_request]
     provides: [baseline]
-  - id: assess
-    skill: assess-pr-review
-    purpose: MCPでreview commentを取得し、sourceと照合して採否を判断する
+  - id: review-import-permission
+    script: scripts/review-gate.py
+    purpose: review commentを取得してよいpermissionを確認し、禁止なら取得前に止める
     needs: [baseline]
+    provides: [review_import_allowed]
+  - id: assess
+    agent_work: invoking_agent
+    purpose: MCPでreview commentを取得し、sourceと照合して採否を判断する
+    needs: [baseline, review_import_allowed]
     provides: [assessment]
   - id: assessment-gate
     script: scripts/review-gate.py
     purpose: 評価結果を人間へ提示し、設定されたgateを通す
+    when: assessment.accepted_count > 0
     needs: [assessment]
     provides: [assessment_approved]
   - id: report-after-assessment
     playbook: write-doc
-    when: report.enabled && report.timing == after_assessment
-    purpose: 評価・採否判断を資料化する
-    needs: [assessment_approved]
-    provides: [review_report_after_assessment]
+    when: assessment.accepted_count > 0 && report.enabled && report.timing == after_assessment
+    purpose: 同じagentが評価・採否判断をkind:textのmaterialにし、公開保存先へ資料化する
+    needs: [assessment, assessment_approved, document_destination]
+    provides: [status, path, reason]
   - id: modify-gate
     script: scripts/review-gate.py
     purpose: 修正許可と修正前gateを確認する
     needs: [assessment_approved]
     conditional_needs:
-      - when: report.enabled && report.timing == after_assessment
-        needs: [review_report_after_assessment]
+      - when: assessment.accepted_count > 0 && report.enabled && report.timing == after_assessment
+        needs: [path]
     provides: [modify_approved]
   - id: modify
-    skill: apply-pr-review
+    agent_work: invoking_agent
     purpose: 採用分だけを実装する
     needs: [assessment, modify_approved]
     provides: [changes, change_report]
@@ -87,43 +95,41 @@ steps:
     needs: [changes, change_report]
     provides: [changes_approved]
   - id: verify
-    skill: verify-pr-review
+    agent_work: invoking_agent
     purpose: 設定された検証を実行する
     needs: [changes_approved]
     provides: [verification]
   - id: report-before-commit
     playbook: write-doc
     when: report.enabled && report.timing == before_commit
-    purpose: 評価、変更差分、検証結果をcommit前に資料化する
-    needs: [assessment, change_report, verification]
-    provides: [review_report_before_commit]
+    purpose: 同じagentが評価、変更差分、検証結果をkind:textのmaterialにし、公開保存先へcommit前資料として保存する
+    needs: [assessment, change_report, verification, document_destination]
+    provides: [status, path, reason]
   - id: commit
     playbook: agent-work-policy
-    input: {action: commit}
     purpose: 限定したpathとmessageを公開入力として渡し、permissionとhuman gateに従ってcommitする
     needs: [verification]
     conditional_needs:
       - when: report.enabled && report.timing == before_commit
-        needs: [review_report_before_commit]
+        needs: [path]
     provides: [commit, gate_state, workspace]
   - id: report-before-push
     playbook: write-doc
     when: report.enabled && report.timing == before_push
-    purpose: 評価、変更差分、検証結果、commitをpush前に資料化する
-    needs: [assessment, change_report, verification, commit]
-    provides: [review_report_before_push]
+    purpose: 同じagentが評価、変更差分、検証結果、commitをkind:textのmaterialにし、公開保存先へpush前資料として保存する
+    needs: [assessment, change_report, verification, commit, document_destination]
+    provides: [status, path, reason]
   - id: push
     playbook: agent-work-policy
-    input: {action: push}
     purpose: permissionとhuman gateに従って作業branchをpushする
     needs: [commit]
     conditional_needs:
       - when: report.enabled && report.timing == before_push
-        needs: [review_report_before_push]
+        needs: [path]
     provides: [pushed_branch, gate_state]
   - id: report-after-push
     playbook: write-doc
     when: report.enabled && report.timing == after_push
-    purpose: 評価からpush結果までを資料化する
-    needs: [assessment, change_report, verification, commit, pushed_branch]
-    provides: [review_report_after_push]
+    purpose: 同じagentが評価からpush結果までをkind:textのmaterialにし、公開保存先へ資料化する
+    needs: [assessment, change_report, verification, commit, pushed_branch, document_destination]
+    provides: [status, path, reason]
