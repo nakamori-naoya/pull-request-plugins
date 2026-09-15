@@ -7,65 +7,33 @@ description: 指定GitHub PRのreview commentを取得・評価し、人間gate�
 
 評価内容はsourceから判断し、工程順、操作許可、人間介入点は設定から変えない。
 
-## 0. プラグイン root を決める
+## 1. 実行契約を受け取る
 
-<!-- BEGIN shared:skill-entry/root-block -->
-```bash
-BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/this/plugin}"
-if [ -d "${BUNDLE_ROOT}/playbooks/pull-request/pr-review-response" ]; then
-  PLUGIN_ROOT="${BUNDLE_ROOT}/playbooks/pull-request/pr-review-response"
-else
-  PLUGIN_ROOT="${BUNDLE_ROOT}"
-fi
-```
+このSKILLを実行する同じagentが、同じdirectoryの`playbook.yml`と本文から参照する資料を全文読み、利用者の入力と明示された資料を保持した一つの文脈で最後まで判断する。YAMLの`steps`は工程順・`needs`・`provides`の正本であり、宣言順に辿る。`agent_work: invoking_agent`はこのagentが同じ文脈で担う調査・判断・変更・検証工程、`script:`は決定論的な安全gate、`playbook:`は外部公開Skillの直接呼び出しである。外部runtimeによる値注入や認知結果のfile relayを前提にしない。必要な入力や結果が無ければ推測せず停止する。
 
-`PLUGIN_ROOT`は配布物rootの絶対パスである。単一skill pluginではこの`SKILL.md`があるdirectory、複数skill pluginでは`skills/<skill>/`の2つ上に当たる。Claude Codeでは`${CLAUDE_PLUGIN_ROOT}`が自動展開される。
-<!-- END shared:skill-entry/root-block -->
+公開入力`document_destination`は資料化条件が成立したときに使う任意入力である。採用が1件以上あり、`report.enabled`と選択した`report.timing`が当該report工程に一致した時点だけ必須とする。新規作成は`{output_directory: <既存の書き込み可能な絶対directory>, name: <.md名>}`、更新は`{update_target: <既存Markdownの絶対path>}`のどちらか一方だけを持つobjectである。片側欠落、両方式混在、未知キー、未確定の保存先は補完せず、その資料化工程と後続操作へ進まない。report無効、timing不一致、または採用0件では未使用の保存先を質問・検査せずwrite-docを呼ばない。
 
-## 1. 工程を解決する
-
-<!-- BEGIN shared:skill-entry/config-load -->
-```bash
-CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-```
-
-**このコマンドは説明例ではない。必ず実行する。** 解決済みYAMLが空なら先へ進まない。設定ファイルを直接読んで代用しない。
-
-本文中の `${...}` は解決済みYAMLのプロパティである。使用時に `yq -er` で読み、欠落または `null` なら停止する。
-<!-- END shared:skill-entry/config-load -->
-
-`${.instructions.execution.directive}`に従い`${.playbook.steps}`を上から実行する。`${.playbook.permissions}`と`${.playbook.gates}`はreview取込・修正だけに使う。公開Git操作のpermission、human gate、検証、実行は`playbook:`工程として委譲する。
-
-**自分のpackageの工程（`skill:` と `script:`）を呼ぶときは `--scope=${.resolution.scope_root}` を必ず渡す。**この段取りを通るときだけ効く設定がそこにある。渡さなければ効かない。入れ子の段取りへは、受け取ったものをそのまま渡す（自分の名前で作り直さない）。
-
-公開方針はrepository単位で一つである。公開Git操作の委譲へは`--scope`を渡さず、scope設定で公開permissionやhuman gateを差し替えない。
+`${.instructions.execution.directive}`に従い`${.playbook.steps}`の責務を同じagentが上から実行する。`${.playbook.permissions}`と`${.playbook.gates}`はreview取込・修正だけに使う。公開Git操作のpermission、human gate、検証、実行は`playbook:`工程として委譲し、この入口から差し替えない。
 
 ## 2. 評価する
 
-`review-gate.py preflight`でrepositoryと開始時worktreeを検査する。review取込前に`review-gate.py permission review_import`を通し、`assess-pr-review`を呼ぶ。評価成果を提示する。
+[PR review対応の判断規律](references/review-judgment.md)を全文読む。同じdirectoryの公開`playbook.yml`を`--config`へ直接渡して`review-gate.py preflight`でrepositoryと開始時worktreeを検査する。review取込前にも同じ公開`playbook.yml`を渡して`review-gate.py permission review_import`を通す。その後`assess`工程として、同じagentがGitHub MCPでreview commentを取得し、判断規律の`assess`に従ってsource、diff、test、必要な履歴と照合し、構造化した評価成果を提示する。旧内部skillや解決済みwrapperは呼ばない。
 
-`after_assessment` gateを通す。acceptが0件なら変更せず報告して終了する。
+acceptが0件なら変更・gate・公開操作へ進まず、reject/deferの根拠を報告して終了する。1件以上ならYAMLの`assessment-gate`分岐に従って`after_assessment` gateを通す。
 
 ## 3. 採用分だけ修正する
 
-`modify` permissionと`before_modify` gateを通し、`apply-pr-review`を呼ぶ。
+`modify` permissionと`before_modify` gateを通し、同じagentが判断規律の`modify`に従ってacceptされた指摘だけを実装する。
 
 差分と変更fileを提示し、`after_modify` gateを通す。評価でacceptされていない変更が混ざったら先へ進まない。
 
 ## 4. 検証し、公開操作を委譲する
 
-`verify-pr-review`を呼ぶ。失敗したらcommitしない。
+同じagentが判断規律の`verify`に従い、公開YAMLの`verification.commands`を宣言順に実行する。失敗したらcommitしない。旧内部skillへ検証を委譲しない。
 
-設定された時点でreportが有効なら資料化の段取りを呼び、その成果物を後続工程へ渡す。資料化では`write-doc`契約v2に従い、素材を`{kind: file, path: <絶対path>}`の配列、新規作成先を`output_directory`と`name`として`${.deps.write-doc.entry}`へ直接渡す。結果の`status`と`path`または`reason`を直接受け取り、中間YAML、`output_to`、write-doc用の設定解決は使わない。
+設定された時点でreportが有効なら資料化の段取りを呼び、その成果物を後続工程へ渡す。同じagentが各report工程の`needs`に届いた評価、採否、変更、検証、commit、push結果のうち、その時点までに存在する値を読み、本文を`{kind: text, content: <本文>}`にした1要素以上の`material`へ直接写す。公開`document_destination`を検査し、新規なら`output_directory`と`name`、更新なら`update_target`だけを`write-doc:write-doc`へ渡す。結果の`status`が`completed`で絶対`path`を返した場合だけ後続へ使い、`failed`なら`reason`を報告して停止する。中間素材file、入力・出力YAML、`output_to`、write-doc用の設定解決は使わない。
 
-commitとpushは、それぞれ**1呼び出し1操作**として`agent-work-policy`の公開playbookへ委譲する。**呼び出しは2段で、`prepare.sh` は1回だけ実行する。**契約が定める入力YAMLを一時領域へ書き、自分で実行設定を解決する。
-
-```bash
-POLICY_CFG=$(bash "${.deps.agent-work-policy.root}/scripts/prepare.sh" "$(pwd)" \
-  --input="$INPUT_FILE" --bindings="${.resolution.bindings_lock}") || exit 2
-```
-
-そのうえで `${.deps.agent-work-policy.entry}`（公開playbook入口の`SKILL.md`の絶対path）の手順に、いま得た `$POLICY_CFG` を渡して実行し、入力に書いた書き込み先から公開出力を読む。委譲先は `prepare.sh` を実行し直さない。**委譲先の中のscript、引数、exit code、設定キーは扱わない。** `entry_skill` は表示用であり、その名前で分岐しない。
+commitとpushは、それぞれ**1呼び出し1操作**として公開Skill `agent-work-policy:work-with-policy`へ委譲する。`needs`で到達したrepository、変更path、messageから公開契約の完全な入力objectを実行時に組み立てて直接渡し、公開結果objectを直接受け取る。YAMLの`input`へactionだけの部分objectや動的placeholderを置かない。設定ファイル、入力・出力YAML、依存先root、依存先の実行scriptは扱わない。
 
 出力が承認待ちを示した場合だけ、同じ出力に含まれる承認対象を提示し、実際に承認を得てから同じ操作を承認済みとして呼び直す。公開操作のための独自permission・gate・`git`・`gh`は追加しない。
 
@@ -74,5 +42,3 @@ review固有のcommandとgateの呼び方、委譲の手順は[実行契約](ref
 ## 5. 報告する
 
 PR、comment別採否、変更file、検証結果、commit、push先を報告する。未承認・未実行を成功扱いせず、reviewへの返信・thread resolveはしない。
-
-設定生成で返却された絶対pathを実行記録へ残す。別shellでは記録した絶対pathを `CFG_FILE` へ明示代入して読む。処理が成功・停止・失敗した最後に `python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"` でこのrunの設定だけを削除する。別runの設定は削除しない。

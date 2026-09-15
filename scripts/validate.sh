@@ -216,11 +216,17 @@ validate_publication_delegation_contract() {
   # M4b: 外部pluginのscriptを直接実行する形へ戻す変異は拒否する。
   reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4b \
     '(.steps[] | select(.id=="commit")) |= (.script="scripts/review-gate.py" | .plugin="agent-work-policy" | del(.playbook) | del(.input))'
-  # M4c: 1呼び出し1actionを崩す変異（actionを消す・別actionにする）は拒否する。
+  # M4c/M4d: YAMLへaction-onlyの部分入力を戻す変異と、委譲自体の欠落を拒否する。
   reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4c \
-    '(.steps[] | select(.id=="commit")).input.action="merge"'
+    '(.steps[] | select(.id=="commit")).input={action:"commit"}'
   reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4d \
-    'del(.steps[] | select(.id=="commit").input)'
+    'del(.steps[] | select(.id=="commit").playbook)'
+  # C02: accept 0件ならgate前に終了する分岐を消す変異は拒否する。
+  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" c02 \
+    'del(.steps[] | select(.id=="assessment-gate").when)'
+  # review取得permissionを取得後へずらす変異は拒否する。
+  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" c02_permission \
+    '(.steps[] | select(.id=="assess").needs)=["baseline"]'
   # M5: 公開操作の独自permissionを再導入する変異は拒否する。
   reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m5 '.permissions.commit=true'
   reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m5b '.gates.before_push=true'
@@ -230,9 +236,61 @@ validate_publication_delegation_contract() {
   # M9: 公開操作の委譲を自前scriptへ差し替える変異は拒否する。
   reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" m9 \
     '(.steps[] | select(.id=="create-pull-request")) |= (.script="scripts/create.sh" | del(.playbook) | del(.input))'
+  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" c01 \
+    '(.steps[] | select(.id=="workspace")).input={action:"inspect"}'
   # M10: 外部rootからpathを組み立てる引数を再導入する変異は拒否する。
   reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" m10 \
     '(.steps[] | select(.id=="prepare-pull-request")).arguments=["--root=${.deps[\"agent-work-policy\"].root}"]'
+
+  # F6: 公開保存先と各時点の認知結果がwrite-doc工程へ届く配線を固定する。
+  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_no_destination_input \
+    '.inputs |= map(select(.!="document_destination"))'
+  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_no_report_needs \
+    '(.steps[] | select(.id=="report-before-resolution")).needs=[]'
+  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_unconditional_report \
+    '(.steps[] | select(.id=="report-after-resolution")).when="true"'
+  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" f6_review_no_destination_input \
+    '.inputs |= map(select(.!="document_destination"))'
+  for report_id in report-after-assessment report-before-commit report-before-push report-after-push; do
+    reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" "f6_${report_id}_no_needs" \
+      "(.steps[] | select(.id==\"$report_id\")).needs=[]"
+  done
+  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" f6_review_accept_zero_report \
+    '(.steps[] | select(.id=="report-after-assessment")).when="report.enabled && report.timing == after_assessment"'
+
+  # 公開document_destinationの新規/更新排他とwrite-doc直接結果の停止境界。
+  destination_contract='type=="object" and
+    (((keys|sort)==["name","output_directory"] and (.output_directory|type=="string" and startswith("/")) and (.name|type=="string" and endswith(".md"))) or
+     ((keys|sort)==["update_target"] and (.update_target|type=="string" and startswith("/") and endswith(".md"))))'
+  jq -ne --arg output_directory "$fixture" --arg name report.md \
+    '{output_directory:$output_directory,name:$name} | '"$destination_contract" >/dev/null || status=1
+  jq -ne --arg update_target "$fixture/report.md" \
+    '{update_target:$update_target} | '"$destination_contract" >/dev/null || status=1
+  if jq -ne --arg output_directory "$fixture" --arg name report.md --arg update_target "$fixture/report.md" \
+    '{output_directory:$output_directory,name:$name,update_target:$update_target} | '"$destination_contract" >/dev/null; then status=1; fi
+  if jq -ne --arg output_directory "$fixture" \
+    '{output_directory:$output_directory} | '"$destination_contract" >/dev/null; then status=1; fi
+  report_result_contract='(.status=="completed" and (.path|type=="string" and startswith("/")) and (has("reason")|not)) or
+    (.status=="failed" and (.reason|type=="string" and length>0) and (has("path")|not))'
+  jq -ne --arg path "$fixture/report.md" '{status:"completed",path:$path} | '"$report_result_contract" >/dev/null || status=1
+  jq -ne '{status:"failed",reason:"write-doc failed"} | '"$report_result_contract" >/dev/null || status=1
+  if jq -ne '{status:"failed",reason:"write-doc failed",path:"/tmp/not-completed.md"} | '"$report_result_contract" >/dev/null; then status=1; fi
+
+  # 同じ代表入力で条件だけを変え、未使用保存先を先頭で必須化しない境界を確認する。
+  pull_report_request='(.has_conflicts and (.timing=="before_resolution" or .timing=="after_resolution")) as $due |
+    if $due then (.document_destination | '"$destination_contract"') else true end'
+  jq -ne '{has_conflicts:false,timing:"before_resolution"} | '"$pull_report_request" >/dev/null || status=1
+  if jq -ne '{has_conflicts:true,timing:"before_resolution"} | '"$pull_report_request" >/dev/null; then status=1; fi
+  jq -ne --arg output_directory "$fixture" \
+    '{has_conflicts:true,timing:"before_resolution",document_destination:{output_directory:$output_directory,name:"conflicts.md"}} | '"$pull_report_request" >/dev/null || status=1
+  review_report_request='((.accepted_count>0) and .enabled and
+      (.timing=="after_assessment" or .timing=="before_commit" or .timing=="before_push" or .timing=="after_push")) as $due |
+    if $due then (.document_destination | '"$destination_contract"') else true end'
+  jq -ne '{accepted_count:0,enabled:true,timing:"after_assessment"} | '"$review_report_request" >/dev/null || status=1
+  jq -ne '{accepted_count:1,enabled:false,timing:"before_commit"} | '"$review_report_request" >/dev/null || status=1
+  if jq -ne '{accepted_count:1,enabled:true,timing:"before_commit"} | '"$review_report_request" >/dev/null; then status=1; fi
+  jq -ne --arg update_target "$fixture/review.md" \
+    '{accepted_count:1,enabled:true,timing:"before_commit",document_destination:{update_target:$update_target}} | '"$review_report_request" >/dev/null || status=1
 
   # M8/M8b/M12: shellとsubprocess list形式の素の公開操作を拒否する。
   mkdir -p "$fixture/plugins"
@@ -312,10 +370,17 @@ validate_real_distribution_resolution() {
         (.resolution.bindings_lock|type=="string" and startswith("/")) and
         # 外部依存を skill: / script: で掴んでいない。
         all(.playbook.steps[]; (.plugin // "") as $p | $p!="agent-work-policy" and $p!="write-doc") and
-        # 委譲は1呼び出し1action。宣言されたactionだけを要求する。
-        ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .input.action] | length>0) and
-        ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .input.action]
-          - (.deps["agent-work-policy"].implements[0].actions) | length==0)
+        # action-only の静的入力は置かない。同じagentが needs の実値から公開入力objectを
+        # 組み立て、固定の公開playbook名を直接呼ぶ。ここでは入口と対象stepを観測する。
+        all(.playbook.steps[] | select(.playbook=="agent-work-policy"); has("input") | not) and
+        (if .playbook.name=="pull-request" then
+           ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .id] | sort)
+             ==["create-pull-request","push","ready-for-review","workspace"]
+         elif .playbook.name=="pr-review-response" then
+           ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .id] | sort)
+             ==["commit","push"]
+         else false end) and
+        all(.playbook.steps[] | select(.playbook=="write-doc"); .provides==["status","path","reason"])
       ' "$fixture/$playbook-$runtime.json" >/dev/null \
         || { echo "[validate] 実配布物への解決結果が契約どおりでない: $playbook ($runtime)" >&2; status=1; }
       # 宣言された契約版の公開面が実在する。write-doc v2 は直接呼出しなので

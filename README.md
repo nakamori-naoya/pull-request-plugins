@@ -111,20 +111,9 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 - `write-doc@write-doc`
 - `agent-work-policy@agent-work-policy`
 
-別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、開発用map、同じrepository、runtimeのinstall cacheの順に候補を調べ、解決したmanifestのidentityと公開playbookの存在を検査する。
+別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、解決したmanifestのidentity、契約版、公開playbook、必要なactionまたは文書型の宣言を検査する。
 
-外部pluginから使ってよいのは、その公開playbookの4点だけである。参照の形は`${.deps.<論理依存名>.root}`と`${.deps.<論理依存名>.entry}`の**2つ**しかない。
-
-| # | 参照形 | 用途 |
-|---|---|---|
-| E1 | `${.deps.<x>.root}/scripts/prepare.sh <repo> --input=<絶対path> [--scope=<dir>] [--bindings=<lock>]` | 入力を渡して実行設定を解決する |
-| E2 | `${.deps.<x>.root}/playbook.yml` | 段取りの宣言を読む |
-| E3 | `${.deps.<x>.root}/scripts/resolve.sh` | `prepare.sh` が内部で呼ぶ入口 |
-| E4 | `${.deps.<x>.entry}` | 公開playbook入口の`SKILL.md`の絶対path。実行手順はここに従う |
-
-呼び出しは2段である。消費側がE1で実行設定を解決し、得た絶対pathをE4の`SKILL.md`へ渡して実行させ、入力に書いた書き込み先から公開出力を受け取る。**依存先は`prepare.sh`を実行し直さない。**
-
-外部pluginを`skill:`や`script:`のstepで指すこと、`${.deps.<x>.root}`からE1〜E3以外のpathを組み立てること、`${.deps.<x>.skills.<名前>}`のようなskill名で入口を指すこと、ブラケット形で綴ること、外部の設定ファイル・設定キー・内部の名前を語ることは禁止する。`bash scripts/lint-consumer-contract.py`がこの規則を静的に検査する。
+外部playbookには公開契約の入力objectを直接渡し、同じ呼び出しが返す結果objectを直接読む。`agent-work-policy`は契約ID・版・対象repository・1つのactionとそのaction固有値だけを受け取る。`write-doc` v2は型付き`material`と、新規作成の`output_directory`+`name`または更新の`update_target`を排他的に受け取る。入力YAML、中間YAML、依存先root、内部script、結果受取用ファイルは扱わない。
 
 ## 設定の上書きと優先順位
 
@@ -142,8 +131,6 @@ playbookの静的設定は、scope、repository、personal、同梱 `playbook.ym
 
 skillでは、同梱設定の `prompt_parameters` に宣言されたpathだけ、依頼で明示された値を `--override=<path>=<value>` として最終上書きできる。宣言されていないpathを任意に上書きすることはできない。
 
-たとえば入口は `<repo>/.harness-plugins/pull-request.config.yml`、その入口から呼ぶ `write-doc` だけの設定は `<repo>/.harness-plugins/scopes/pull-request/write-doc.config.yml` に置く。
-
 ## 検証
 
 ```bash
@@ -152,47 +139,8 @@ bash scripts/validate.sh
 
 ## 実行契約の検証と配布
 
-`python3 scripts/doctor.py --repository . --repo <対象repository>` はCLI構文、公開skillと設定・依存の解決を読み取り専用で診断する。設定解決を含めない検査は `--distribution-only` を明示する。
-
-doctorのfull診断は、依存を**実配布物**に対して解く。依存先は`HARNESS_PLUGIN_REAL_ROOTS`（契約ID→package rootのJSON）か、兄弟checkout `../<marketplace>-plugins/plugins`（親directoryは`HARNESS_PLUGIN_SIBLING_ROOT`で差し替える）から探し、どちらでも見つからなければfixtureへ倒さず理由付きでNGにする。同梱既定に実値を置かない`prompt_parameters`（`required: true`で`default`が無いもの）を持つskillは、上書きが無ければ必ず落ちるので実行せず、`skipped: requires-override`と必要なパラメータ名を出す。これは配布物の不具合ではないのでNGにしない。
-
-依存参照の検査はresolverとlintが同じ関数で行う。外部依存を指せるのは`${.deps.<論理名>.root}`直下3点と`${.deps.<論理名>.entry}`だけで、それ以外は`external-dependency-path`で落ちる。内部依存（同一package）の`${.deps.<内部名>.skills.<名前>}`は、解決結果に実在するskill名だけを許し、綴り違いや名前の無い形は`internal-skill-unknown`で落ちる。`--explain`の依存行は`[外部] <論理名> → <marketplace>/<plugin> <version> [runtime/source_kind]: <root>`の形で、束縛で実体が変わったときだけ行末に`← <層>`が付く。
-
-CIは同ownerの依存repositoryを兄弟directoryへcheckoutしてからvalidate.shを走らせる。**兄弟のrefは既定でmainである。** PR headと同名のbranchを採るのは、(1)実行が`pull_request`であり、(2)PR headが同一repository（forkではない）で、(3)同ownerの兄弟repoにその名前のbranchが実在する、の3つが揃うときだけで、選んだrefと理由はログへ出る。forkのPR作者はownerの兄弟repoにbranchを作れないため、PRから兄弟checkoutの内容を差し替える経路は無い。code scanningの`actions/untrusted-checkout/medium`はこの根拠により`won't fix`として扱う。
-
-`bash scripts/validate.sh` は機能・不正入力・配布の検証を行い、GitHub Actionsの `validate (ubuntu-latest)` / `validate (macos-latest)` でも実行する。[意味的評価シナリオ](evals/scenarios.json)は `scripts/evaluate-skills.py` で実モデルと別のjudgeモデルへ渡し、モデルID・設定・入力・応答・判定根拠を記録する。criterionの真偽は意味評価の記録であり、CLIの合否にはしない。CLIの非zero終了はadapter失敗、不正な応答、根拠不整合など記録を完了できない操作失敗を示す。人またはエージェントが記録を読み、構造検証とは別に根拠付きで評価する。未実行を成功として扱わない。
-
-version更新は `python3 scripts/release.py --plugin <公開plugin名> --version <semver> --notes <変更内容> --breaking <互換性への影響> --migration <移行方法> --checks <codex/claudeの検証結果JSON>` で計画を確認し、`--apply` で両runtimeのmanifestとmarketplaceを更新する。検証結果には未検証も明示できる。配布・外部publishは別操作であり、このcommandでは行わない。
-
-### 依存先を束縛する`dependencies.yml`
-
-契約ID（`marketplace/plugin`）に対する実体を`{plugin, marketplace}`で束縛する。**top-levelは`version: 1`と`bindings`の2つだけである。** それ以外のキーがあると`[error:binding-file-invalid] reason=top-level-keys`で停止する。
-
-```yaml
-version: 1
-bindings:
-  "write-doc/write-doc": {plugin: write-documents, marketplace: my-marketplace}
-  "agent-work-policy/agent-work-policy": {plugin: my-work-policy, marketplace: my-marketplace}
-```
-
-置き場所は3層で、下ほど優先する。**層はマージせず、見つかった最優先の1ファイルだけを使う。**
-
-1. personal: `$XDG_CONFIG_HOME/harness-plugins/dependencies.yml`（未設定時は`~/.config/harness-plugins/dependencies.yml`）
-2. repository: `<repo>/.harness-plugins/dependencies.yml`
-3. scope: `<repo>/.harness-plugins/scopes/<入口playbook>/dependencies.yml`
-
-値に書けるのは`plugin`と`marketplace`だけで、**pathやversionは書けない。** 差し替え先はmarketplace経由（installed cache、同一repository、開発時の`HARNESS_PLUGIN_DEV_ROOTS`）で解決でき、manifestの`metadata.harness.implements`にその契約IDを宣言しているpluginでなければならない。宣言が無ければ`[error:binding-not-implemented]`で停止する。playbook側の`requires`は書き換えない。
-
-入口が選んだ束縛はrun専用のlockへ固定して子へ渡す。同じ実行の中で実体が食い違うことはなく、実行中に`dependencies.yml`を書き換えても、そのrunの解決は変わらない。
-
-### explainの読み方
-
-`scripts/prepare.sh`は`--explain`を引数に取らない。**explainは常にstderrへ出る。** stdoutは解決済みYAMLの絶対path1行だけなので、解決の内訳（選んだ設定層、依存の実体、束縛の出どころ、静的に解けた工程入力）はstderrで読む。`--explain`のような未知optionを渡すとusageを表示してexit 2で止まる。
+`bash scripts/validate.sh` は配布構造、公開依存の宣言、actionごとの直接object、gate分岐、不正入力を検査する。外部APIや実Git公開操作は行わず、temp repositoryとstub providerで正常・失敗経路を確認する。構造検査の成功は競合解消やreview判断の意味品質を保証しないため、公開入口から必読資料を読み、変更意図と根拠を別に評価する。
 
 ### 破壊的変更と移行
 
-公開入口は同名SKILLの薄い別入口を廃止して一意にした。古い内部SKILL pathを直接参照している呼出元は公開manifestのskillsへ切り替える。
-
-外部pluginの公開面をplaybook 1枚に限る規則へ移行した。第2入口`mark-ready-for-review`は廃止し、下書きPRのレビュー受付への遷移は`open-pull-request`の最後の工程が委譲する。このrepository自身が`agent-work-policy`を使うための設定fileは、委譲先が公開するinstall手順に合わせて置き換えた。互換経路は用意しない。設定の一時fileはshell終了では削除されず、返却された絶対pathを次の工程へ渡し、完了・停止時にrun-configのcleanupでそのrunだけを削除する。以前の一時fileや異なる実行identityを再利用せず、新しいrunを開始する。
-
-検証CLIのstdoutはJSONのみとなり、commandの出力はresults[].log_pathへ移る。呼出元はstdoutをログとして連結せずJSONとして読み、失敗時のexit_codeとlog_pathを参照する。
+公開入口は`open-pull-request`と`respond-to-pr-review`である。旧内部入口や外部providerの設定解決へ戻す互換経路は置かない。
