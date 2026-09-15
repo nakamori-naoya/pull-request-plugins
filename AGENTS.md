@@ -1,10 +1,12 @@
+> 作業を始める前に、workspace正本入口 `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md` を読み、そこから指定される共通規約とこのrepository固有の規則を適用する。
+
 # AGENTS.md
 
 このrepositoryはPull Requestの競合調査・解消・作成とreview responseを扱うmarketplaceである。marketplaceへ公開するインストール対象は`pull-request` playbook packageだけにし、個々のplaybookと下段skillを別entryへ公開しない。作業権限とhuman gateは設定に従う。
 
-別repositoryへは、そのrepositoryが公開するplaybookだけで依存する。stepでは外部pluginを`playbook:`でしか指さず、`skill:`や`script:`で指さない。解決結果から組み立ててよいのは`${.deps.<論理依存名>.root}`の直下3点（`scripts/prepare.sh`、`playbook.yml`、`scripts/resolve.sh`）と、入口`SKILL.md`の絶対pathである`${.deps.<論理依存名>.entry}`の**2形だけ**である。skill名で入口を指す形とブラケット形は書かない。
+別repositoryへは、そのrepositoryが公開するplaybookだけで依存する。stepでは外部pluginを`playbook:`でしか指さず、`skill:`や`script:`で指さない。公開契約が設定解決を要求する依存は`${.deps.<論理依存名>.root}`の公開入口と`${.deps.<論理依存名>.entry}`だけを使う。直接入出力を定める`write-doc`契約v2は`${.deps.write-doc.entry}`へ契約入力を直接渡す。skill名で入口を指す形とブラケット形は書かない。
 
-呼び出しは2段にする。自分が`prepare.sh --input --scope --bindings`で実行設定を解決し、得た絶対pathを入口`SKILL.md`へ渡して実行させ、入力に書いた書き込み先から公開出力を受け取る。依存先に`prepare.sh`を実行し直させない。1回の委譲で頼む操作は1つだけにし、その操作が使わないキーは入力に書かない。
+呼び出し方は依存先の公開契約に従う。`agent-work-policy`は入力YAMLを作って設定を一度だけ解決し、その公開出力を読む。`write-doc`契約v2はobject配列の素材と明示した保存先を直接渡し、`status`と`path`または`reason`を直接受け取る。1回の委譲で頼む操作は1つだけにする。
 
 外部の内部skill名、工程id、script、引数、exit code、設定ファイル、設定キーを、playbook.yml・SKILL.md・README・references・scripts・設定のどこにも書かない。
 

@@ -56,7 +56,7 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 
 `verify-pr-review`を呼ぶ。失敗したらcommitしない。
 
-設定された時点でreportが有効なら資料化の段取りを呼び、その成果物を後続工程へ渡す。
+設定された時点でreportが有効なら資料化の段取りを呼び、その成果物を後続工程へ渡す。資料化では`write-doc`契約v2に従い、素材を`{kind: file, path: <絶対path>}`の配列、新規作成先を`output_directory`と`name`として`${.deps.write-doc.entry}`へ直接渡す。結果の`status`と`path`または`reason`を直接受け取り、中間YAML、`output_to`、write-doc用の設定解決は使わない。
 
 commitとpushは、それぞれ**1呼び出し1操作**として`agent-work-policy`の公開playbookへ委譲する。**呼び出しは2段で、`prepare.sh` は1回だけ実行する。**契約が定める入力YAMLを一時領域へ書き、自分で実行設定を解決する。
 

@@ -40,9 +40,9 @@ CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
 
 ## 2. 入れ子の段取りを呼ぶ
 
-`playbook:` の工程は、依存先が公開している入口だけで実行する。依存先の中の工程名、script、設定ファイル、設定キーは扱わない。`${.deps.<論理依存名>}` から組み立ててよいのは `${.deps.<論理依存名>.root}` の直下3点（`scripts/prepare.sh`、`playbook.yml`、`scripts/resolve.sh`）と、入口`SKILL.md`の絶対pathである `${.deps.<論理依存名>.entry}` だけである。
+`playbook:` の工程は、依存先が公開している入口と契約だけで実行する。依存先の中の工程名、skill、reference、設定キーは扱わない。
 
-**呼び出しは2段で、`prepare.sh` は1回だけ実行する。**
+`agent-work-policy`は入力YAMLを作り、公開入口の設定を一度だけ解決して呼ぶ。
 
 1. その工程の `input` と、依頼から決まる値を、依存先の契約が定める入力YAMLとして一時領域へ書く。出力の書き込み先も入力に含める。**1回の呼び出しで頼む操作は1つだけである。** その action が使わないキーは書かない。
 2. **自分で** `prepare.sh` を実行して実行設定を解決する。公開Git操作の工程はこの形で呼ぶ。
@@ -52,32 +52,17 @@ POLICY_CFG=$(bash "${.deps.agent-work-policy.root}/scripts/prepare.sh" "$(pwd)" 
   --input="$INPUT_FILE" --bindings="${.resolution.bindings_lock}") || exit 2
 ```
 
-資料化の工程はこの形で呼ぶ。素材は自分で束ねたファイルの絶対pathで渡し、出力の書き込み先も入力に書く。
+資料化は`write-doc`契約v2の入力を`${.deps.write-doc.entry}`へ直接渡す。素材はfile objectとして渡し、新規作成先または更新対象を明示する。
 
-```bash
-cat > "$INPUT_FILE" <<YML
-contract: write-doc/write-doc
-version: 1
-material: [<束ねた素材の絶対path>]
-name: <ファイル名>
-output_to: $OUTPUT_FILE
-YML
+`material`は`[{kind: file, path: <束ねた素材の絶対path>}]`とする。新規作成では`output_directory`と`name`、更新では`update_target`を渡す。保存先が無ければ推測せず停止する。結果は`status`と、成功時の`path`または失敗時の`reason`として直接受け取る。中間YAMLと出力YAMLは作らない。
 
-DOC_CFG=$(bash "${.deps.write-doc.root}/scripts/prepare.sh" "$(pwd)" \
-  --input="$INPUT_FILE" --scope="${.resolution.scope_root}" \
-  --bindings="${.resolution.bindings_lock}") || exit 2
-```
-
-既存の資料を差し替えるときは `name` を書かず、代わりに `update_target` を書く。両方は書けない。`output_directory` は任意で、省略すれば利用者の設定で決まる。
-
-3. `${.deps.agent-work-policy.entry}` あるいは `${.deps.write-doc.entry}` が、公開playbook入口の `SKILL.md` の絶対pathである。**その手順に、手順2で得た解決済みYAMLの絶対pathを渡して**実行する。依存先は `prepare.sh` を実行し直さない。実行し直させると、渡した入力・scope・束縛が捨てられる。
-4. 入力に書いた書き込み先から公開出力を読む。**依存先の内部の値を読みに行かない。**
+`${.deps.agent-work-policy.entry}`には解決済み設定を渡し、`${.deps.write-doc.entry}`には契約v2の入力を直接渡す。どちらも依存先の内部の値を読みに行かない。
 
 `${.deps.<論理依存名>.entry_skill}` は表示用である。**その名前で分岐しない。**
 
 公開Git操作の段取りへは`--scope`を渡さない。scope設定で公開permissionやhuman gateを弱める経路を作らないためである。
 
-自分が `prepare.sh` で作った解決済みYAMLは自分のものなので、自分で片付ける。依存先が内部で作った実行設定は依存先が片付ける。
+`agent-work-policy`のために自分が作った解決済みYAMLは自分で片付ける。`write-doc`には実行設定がない。
 
 ### 承認待ちの扱い
 
