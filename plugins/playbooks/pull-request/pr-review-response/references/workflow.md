@@ -62,24 +62,8 @@ POLICY_CFG=$(bash "${.deps.agent-work-policy.root}/scripts/prepare.sh" "$(pwd)" 
 
 `report.enabled: false`なら資料工程をすべてskipする。trueなら`requires`に`write-doc`が必要で、`report.timing`に一致する1工程だけを実行する。資料成果物は直後のgateまたは後続工程の`conditional_needs`で拘束される。
 
-資料化も同じ委譲の形で呼ぶ。素材は自分で束ねたファイルの絶対pathで渡し、`--scope=${.resolution.scope_root}`をそのまま渡す。
-
-```bash
-cat > "$INPUT_FILE" <<YML
-contract: write-doc/write-doc
-version: 1
-material: [<束ねた素材の絶対path>]
-name: <ファイル名>
-output_to: $OUTPUT_FILE
-YML
-
-DOC_CFG=$(bash "${.deps.write-doc.root}/scripts/prepare.sh" "$(pwd)" \
-  --input="$INPUT_FILE" --scope="${.resolution.scope_root}" \
-  --bindings="${.resolution.bindings_lock}") || exit 2
-```
-
-そのうえで `${.deps.write-doc.entry}` の手順に、いま得た `$DOC_CFG` を渡して実行し、`output_to` に書かれた公開出力から保存されたpathを読む。既存の資料を差し替えるときは `name` を書かず、代わりに `update_target` を書く。両方は書けない。`output_directory` は任意で、省略すれば利用者の設定で決まる。
+資料化は`write-doc`契約v2として直接委譲する。素材は`[{kind: file, path: <束ねた素材の絶対path>}]`とし、新規作成では`output_directory`と`name`、更新では`update_target`を`${.deps.write-doc.entry}`へ直接渡す。保存先が無ければ推測せず停止する。結果の`status`と、成功時の`path`または失敗時の`reason`を直接受け取り、中間YAML、`output_to`、write-doc用の`prepare.sh`は使わない。
 
 ## 実行設定の後始末
 
-呼出元の`CFG_FILE`と、委譲のために自分が`prepare.sh`で作った解決済みYAMLは、自分のものなので自分で片付ける。委譲先が内部で作った実行設定は委譲先自身が片付ける。**互いに代行しない。**
+呼出元の`CFG_FILE`と、`agent-work-policy`への委譲のために自分が作った解決済みYAMLは、自分で片付ける。`write-doc`には実行設定がない。委譲先が内部で作った実行設定は委譲先自身が片付ける。**互いに代行しない。**

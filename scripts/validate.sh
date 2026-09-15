@@ -300,7 +300,7 @@ validate_real_distribution_resolution() {
           | map(select(.id=="agent-work-policy/agent-work-policy" and .version==1 and .kind=="playbook"))
           | length==1) and
         (.deps["write-doc"].implements
-          | map(select(.id=="write-doc/write-doc" and .version==1 and .kind=="playbook"))
+          | map(select(.id=="write-doc/write-doc" and .version==2 and .kind=="playbook"))
           | length==1) and
         # 入口は entry で指す。skill名で指す形は公開面に無い。
         (.deps["agent-work-policy"].entry|type=="string" and endswith("/SKILL.md")) and
@@ -318,12 +318,19 @@ validate_real_distribution_resolution() {
           - (.deps["agent-work-policy"].implements[0].actions) | length==0)
       ' "$fixture/$playbook-$runtime.json" >/dev/null \
         || { echo "[validate] 実配布物への解決結果が契約どおりでない: $playbook ($runtime)" >&2; status=1; }
-      # 公開面の4点が実在する。
+      # 宣言された契約版の公開面が実在する。write-doc v2 は直接呼出しなので
+      # runtime script を公開面として要求しない。
       local dep member
       for dep in agent-work-policy write-doc; do
         local dep_root dep_entry
+        local -a members
         dep_root=$(jq -r --arg d "$dep" '.deps[$d].root' "$fixture/$playbook-$runtime.json")
-        for member in playbook.yml scripts/resolve.sh scripts/prepare.sh; do
+        if [ "$dep" = write-doc ]; then
+          members=(playbook.yml)
+        else
+          members=(playbook.yml scripts/resolve.sh scripts/prepare.sh)
+        fi
+        for member in "${members[@]}"; do
           [ -f "$dep_root/$member" ] || { echo "[validate] 公開面の入口が無い: $dep/$member" >&2; status=1; }
         done
         dep_entry=$(jq -r --arg d "$dep" '.deps[$d].entry' "$fixture/$playbook-$runtime.json")
