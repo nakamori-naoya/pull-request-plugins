@@ -16,6 +16,13 @@ fail() { printf 'FAIL: %s\n' "$1"; failed=1; }
 
 PACKAGE="$ROOT/plugins/pull-request"
 ENTRY_DIR="$PACKAGE/skills"
+
+# ── 保守tool（正本は兄弟checkout harness-tools だけ。複製を持たず、無ければ止まる。fixtureで代用しない） ──
+TOOLS="$ROOT/../harness-tools/tools"
+[ -d "$TOOLS" ] || { echo "[error] 兄弟 checkout harness-tools が無い: $TOOLS" >&2; exit 2; }
+python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" && pass "root契約（配置・manifest・隣接playbook.yml・禁止参照形）" || fail "root契約"
+python3 "$TOOLS/validate-plugin-repository.py" --self-test >/dev/null && pass "root validatorのself-test" || fail "root validatorのself-test"
+python3 "$TOOLS/test-hardening.py" --repository "$ROOT" >"$TMP_ROOT/hardening.out" 2>&1 && pass "保守toolの回帰検査（CIのSHA固定・公開入口の一意性・doctorの読み取り専用性を含む）" || { cat "$TMP_ROOT/hardening.out"; fail "保守toolの回帰検査"; }
 ENTRIES=(open-pull-request resolve-pr-conflicts respond-to-pr-review)
 OPEN="$ENTRY_DIR/open-pull-request"
 RESOLVE="$ENTRY_DIR/resolve-pr-conflicts"
@@ -230,7 +237,7 @@ for edit in '' '.conflict_report.timing = "after_resolution"'; do
 done
 [ "$resolve_cfg_ok" -eq 1 ] && pass "resolve-pr-conflicts 設定の記入例が schema（timing 2値、commands 配列、key集合）に合う" || fail "resolve-pr-conflicts 設定の記入例"
 
-# ── 消費側の契約lint（G2同期後の共有版）: 外部依存の内部名を消費側の文書・script・設定へ書いていない ──
+# ── 消費側の契約lint（harness-tools）: 外部依存の内部名を消費側の文書・script・設定へ書いていない ──
 # 検出語は兄弟checkoutの実配布物（provider package root）から作る。兄弟が無ければ緑にせず失敗させる。
 lint_consumer_contract() {
   local map="$TMP_ROOT/lint-dev-map.json" status=0 runtime
@@ -241,7 +248,7 @@ lint_consumer_contract() {
   jq -n --arg g "$(cd "$grill" && pwd -P)" --arg w "$(cd "$write_doc" && pwd -P)" --arg a "$(cd "$awp" && pwd -P)" \
     '{schema:1,dependencies:{"grill/grill":$g,"write-doc/write-doc":$w,"agent-work-policy/agent-work-policy":$a}}' > "$map" || return 1
   for runtime in claude codex; do
-    HARNESS_PLUGIN_DEV_ROOTS="$map" python3 "$ROOT/scripts/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
+    HARNESS_PLUGIN_DEV_ROOTS="$map" python3 "$TOOLS/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
   done
   return "$status"
 }

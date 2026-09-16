@@ -124,7 +124,7 @@ bash scripts/validate.sh
 
 ## 保守tool
 
-`scripts/doctor.py`、`scripts/lint-consumer-contract.py`、`scripts/evaluate-skills.py`、`scripts/release.py`、`scripts/sync-runtime.py`、`scripts/test-hardening.py`、`scripts/validate-distribution.py` と `shared/` は、Product Planning repositoryの `shared/runtime-source` を正本とする保守用の複製である。実行時に別repositoryや生成CLIは不要である。
+保守tool（root validator `validate-plugin-repository.py`、`doctor.py`、`lint-consumer-contract.py`、`test-hardening.py`、`release.py`、eval runner）の正本は兄弟checkout `../harness-tools/` だけである。このrepositoryは複製も同期機構も持たず、`scripts/validate.sh` は `../harness-tools/tools/` が無ければ止まる。消費側契約lintは依存providerの実配布物（`../grill-plugins` / `../write-doc-plugins` / `../agent-work-policy-plugins`）も要る。CIは `.github/workflows/validate.yml` で `harness-tools` と依存providerを兄弟checkoutし、`harness-tools/ci/validate.sh` で local と同じcommandを実行する。実行時（skillの利用時）に別repositoryや生成CLIは不要である。
 
 ## 配置と設定の変更（2026-09-16）
 
