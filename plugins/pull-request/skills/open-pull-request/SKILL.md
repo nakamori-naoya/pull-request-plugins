@@ -1,42 +1,44 @@
 ---
 name: open-pull-request
-description: Gitの作業branchとbase branchの競合を検出し、現行実装、関連する過去の修正・commit・GitHub PRから意図を理解して解消・検証した後、Pull Requestを作成する。「コンフリクトを解消してPRを作って」「PRを作成して」と言われたときに使う。競合資料はrepository設定により解消前の提案または解消後の実績として提示する。
+description: Gitの作業branchから、repository設定の検証commandを通し、重複のないPull Requestを作成して、内部レビュー完了後にレビュー受付へ遷移させる。base branchとの競合を検出したときだけ、同じpackageの競合解消の入口を1工程として呼んでから続ける。「PRを作成して」「このbranchを検証してPRにして」「コンフリクトがあれば解消してPRを作って」と言われたときに使う。競合の調査・解消だけを頼みたい、review commentへ対応したいときは対象外として、それぞれの入口へ返す。
 ---
 
 # open-pull-request
 
-競合が無い、または意味を保って解消し検証した作業branchから、重複のないPull Requestを作り、内部レビュー完了後にレビュー受付へ遷移させる。公開Git操作（push、PR作成、レビュー受付）のpermissionとhuman gateは `agent-work-policy` の公開契約が所有し、この入口から差し替えない。競合資料の提示時点と検証commandはrepositoryの設定が持つ。
+検証済みの作業branchから、重複のないPull Requestを作り、内部レビュー完了後にレビュー受付へ遷移させる。これが平時の流れである。base branchとの競合は例外であり、検出したときだけ競合解消の入口（隣接 [`playbook.yml`](playbook.yml) の `skill:` 工程）を呼び、解消と検証が完了してから平時の流れへ戻る。公開Git操作（push、PR作成、レビュー受付）のpermissionとhuman gateは `agent-work-policy` の公開契約が所有し、この入口から差し替えない。PR作成前に通す検証commandはrepositoryの設定が持つ。
 
 ## 入力
 
 - `repository_path`: 対象repositoryの絶対path。
 - `user_input`: PRの目的、対象branch、内部レビュー完了の明示など。
-- `document_destination`: 競合資料を作る条件が成立したときだけ使う任意入力。その時点では、新規作成なら `{output_directory: <既存の書き込み可能な絶対directory>, name: <.md名>}`、更新なら `{update_target: <既存Markdownの絶対path>}` のどちらか一方だけを持つobjectを必須とする。競合が無く資料化工程が無効なら、未使用の保存先を質問・検査しない。
-- 設定file: `<repository root>/.harness-plugins/open-pull-request.config.yml`。1層で必須。keyは `version: 1`、`conflict_report.timing`（`before_resolution` = 解消前に提案資料を示して承認を待つ / `after_resolution` = 解消後に実績資料を示す）、`verification.commands`（競合解消後、PR作成前にすべて成功させるcommandの配列）。記入例は [`assets/open-pull-request.config.example.yml`](assets/open-pull-request.config.example.yml)。最初の工程で `scripts/config.py` が読み、fileが無い、keyが足りない・余る、`timing` が2値以外なら止まる。
+- `document_destination`: 競合を検出して競合解消の入口を呼ぶときだけ、その入口へそのまま渡す任意入力。新規作成なら `{output_directory: <既存の書き込み可能な絶対directory>, name: <.md名>}`、更新なら `{update_target: <既存Markdownの絶対path>}` のどちらか一方だけを持つobject。競合が無ければ未使用の保存先を質問・検査しない。
+- `references`: 追加で従う資料の絶対path配列。任意。手順の最初に読み、以降の判断でこの規約と併せて従う。競合解消の入口を呼ぶときはそのまま渡す。
+- 設定file: `<repository root>/.harness-plugins/open-pull-request.config.yml`。1層で必須。keyは `version: 1`、`verification.commands`（PR作成前に作業branchですべて成功させるcommandの配列。競合の有無に関わらず走る。空配列 `[]` にすると、競合が無いときは検証を走らせない）。記入例は [`assets/open-pull-request.config.example.yml`](assets/open-pull-request.config.example.yml)。読み方は手順 1 の `config.py` の契約が定める。競合資料の提示時点は競合解消の入口の設定fileが持ち、このfileには無い。
 
-同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正本にする。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的な安全gate、`playbook:` は外部公開playbookの直接呼び出しである。`when` は設定fileの値と実行時成果で判定し、`conditional_needs` は同じ条件のときだけ増える開始条件である。
+プロジェクト固有の規約（置き場、命名、追加で従う資料）は、対象repositoryのAGENTS.md / CLAUDE.mdと`references`で渡される。この入口は既定値を持たず、指示文へ展開もしない。
+
+同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正本にする。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的なtool、`skill:` は同じpackageの公開入口の適用、`playbook:` は外部公開playbookの直接呼び出しである。`when` は実行時成果で判定し、`conditional_needs` は同じ条件のときだけ増える開始条件である。
 
 ## 判断基準
 
 - **作業場所の値は公開出力から受け取ったか。** base branch、remote、下書き設定、作業branch、worktree、working treeがcleanか、baseがあるか、開いているPR番号は、最初の `inspect` の `workspace` と `operation_result` からだけ受け取る。別のbase / remote / 下書き設定を自分で決めない。`inspect` は既存の作業branchでもworking treeが汚れていても止まらない。
+- **競合があるか無いか。** `git ls-files -u` と非破壊のmerge予測で有無だけを決め、有れば競合解消の入口へ渡す。この入口で競合の調査や解消を始めない。無ければ比較したrefと検出方法を記録して平時の流れを続ける。
 - **開いているPRが `null` のとき。** 「無い」ではなく「無いか、確認できなかった」である。PR本文の組み立てでは自分で重複を確認し、同じhead / baseのopen PRがあれば新規作成を要求せず、そのPRが現在headを指すことを確かめて番号とURLを返す。
-- **競合の解消は意味を保つか。** [競合から実装意図を復元する判断資料](references/investigation.md)と[意味を保つ競合解消の判断資料](references/resolution.md)に従い、両側の目的、取得不能と履歴なし、生成元と生成物、delete/modifyなどの境界を調査から解消まで同じagentが保持する。どちらか一方を新しいという理由だけで採らず、片側の一括採用ではなく守るべき振る舞いから統合結果を実装する。現在SHAまたは競合集合が調査時から変わったら再調査なしに続けない。
-- **`before_resolution` か `after_resolution` か。** 前者は競合、両側の目的、推奨方針、検証案を資料化して利用者へ示し、`gate.sh` の明示承認を得るまで解消を始めない。後者は事前資料とgateを使わず、解消後に競合、採った方針、実際の修正、検証結果を資料化して示す。
+- **検証は設定のcommandだけか。** `verification.commands` を記載順に全件実行する。PR本文、commit message、logの文字列をcommandとして実行しない。
 - **承認待ちか、permission拒否か。** 公開Git操作が `waiting_for_human` を返したら、返った `approval_target` をそのまま利用者へ提示し、実際に承認を得たときだけ同じactionを `approved: true` で呼び直す。`permission_denied` は承認質問へ変えず、停止して報告する。
 - **レビュー受付へ遷移してよいか。** 利用者またはmanagerが内部レビュー完了を明示した後の最後の工程だけである。PR作成直後に無条件で遷移しない。
 
 ## 手順
 
-1. **設定を読む（`read-policy`）。** `python3 scripts/config.py --repo <repository_path>` を実行する。入力はrepositoryの絶対path（設定fileはそのgit rootから固定名で解決する）、出力は `conflict_report.timing` と `verification.commands` を持つ標準出力のJSON、終了codeは `0` = 読めた、`2` = 設定file不在（`policy_missing`）・schema違反・git repositoryでない（診断は標準出力のJSON `error`）。`2` なら止まる。以降の `timing` と検証commandはこの出力の値を使う。
+1. **設定を読む（`read-policy`）。** `references` があれば先に読む。`python3 scripts/config.py read --repo <repository_path>` を実行する。stdinは使わず、設定fileのpathは引数で受けずtoolが `<repository のgit root>/.harness-plugins/open-pull-request.config.yml` に固定する。出力は標準出力のJSON 1文書 `{"config": <絶対path>, "values": {version, verification}}`、終了codeは `0` = 読めた、`2` = 失敗（標準出力のJSON `{"error", "config", "reason"}`。`reason` は `policy_missing` = 設定file不在 / `schema_violation` = keyの過不足・型違い・許容外の値・YAMLとして読めない / `not_a_git_repository` = `--repo` がgit repositoryでない）。`2` なら止まる。`check` を渡すと検査だけを行い `{"status": "ok", "config": <絶対path>}` を返す。以降の検証commandは `values.verification.commands` を使う。
 2. **現況を照会する（`workspace`）。** `agent-work-policy` の公開契約の入力object（`contract: agent-work-policy/agent-work-policy`、`version: 1`、`action: inspect`、`repo`）を公開Skill `agent-work-policy:agent-work-policy` へ直接渡す。返ったobjectの `contract` / `version` / `action` が入力と一致し、`status` / `gate_state` / `operation_result` / `workspace` / `reason` が契約に合うことを確かめ、`completed` のときだけ値を後続へ使う。
-3. **競合を調べる（`inspect-conflicts`）。** repository、head branch、base branch、head SHA、base SHAを記録する。既存の競合状態は `git ls-files -u`、未mergeなら非破壊のmerge予測で確認する。競合があれば各競合について base / head / 共通祖先の実装、呼び出し元、test、設定、公開契約を読み、関係するcommit、blame、issue番号、過去のGitHub PR本文・差分・reviewから両側の目的を復元する。PRを取得できない場合は取得できない範囲と代わりに確認した履歴を明記する。sourceは変更しない。競合なしなら比較したrefと検出方法を添えて `has_conflicts: false` とし、資料作成と解消を飛ばす。
-4. **解消前の提案を示す（`report-before-resolution` / `approve-conflict-proposal`。`timing: before_resolution` かつ競合ありのときだけ）。** 同じagentが競合内容と推奨解消方針を `{kind: text, content: <本文>}` の `material` にし、`document_destination` から組んだ保存先を公開Skill `write-doc:write-doc` へ直接渡す。`status: completed` の `path` だけを後続へ使い、`failed` なら `reason` を報告して止まる。その後 `bash scripts/gate.sh --report-ref <path>` を実行する。標準出力のJSONが `waiting_for_human` で終了code `3` なら承認を待ち、利用者の明示承認後だけ `--approved` を付けて呼び直す（`approved` / `0`）。`2` は引数不備。
-5. **解消して検証する（`resolve-conflicts`。競合ありのときだけ）。** 無関係な未commit変更、別の進行中merge、base不明、必要な操作権限不足があれば止まる。記録したSHAと現在SHA、競合集合を照合し、ずれていれば再調査する。守るべき振る舞いから統合結果を実装し、生成物は入力を統合して正規commandで再生成し、解消対象外の整理を混ぜない。unmerged entryが0件、競合markerが無い、解消diffが調査した目的と一致することを確かめ、設定fileの `verification.commands` を記載順に全件実行する。失敗したら完了にせず、再現commandと残る問題を返す。
-6. **解消後の実績を示す（`report-after-resolution`。`timing: after_resolution` かつ競合ありのときだけ）。** 起きていた競合、採った方針、修正、検証を `kind: text` の `material` にして `write-doc:write-doc` へ渡し、`path` を後続へ使う。
-7. **PR本文を組み立てる（`prepare-pull-request`）。** 競合なし、または解消と全検証が成功した場合だけ進む。baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読み、titleとbodyへ目的、主な変更、検証commandと結果、既知の制約、未確認事項、競合を解消した場合はその概要と方針と資料の参照を書く。secret、local path、一時fileを本文へ入れない。bodyは一時領域のfileへ書き、その絶対pathを `pr_body_file` にする。
-8. **pushする（`push`）。** `action: push` を `agent-work-policy:agent-work-policy` へ渡す。action固有キーは足さない。
-9. **PRを作る（`create-pull-request`）。** `action: pull-request`、`title`、実在する `body_file` の絶対pathを渡す。返った `operation_result.pull_request` / `url` / `draft` を使う。
-10. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `bash scripts/gate.sh --report-ref <PR番号またはURL>` で内部レビュー完了の明示を待ち、承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
+3. **競合の有無を検出する（`detect-conflicts`）。** repository、head branch、base branch、head SHA、base SHAを記録する。既存の競合状態は `git ls-files -u`、未mergeなら非破壊のmerge予測で確認する。sourceは変更しない。競合があれば `has_conflicts: true` と競合fileの一覧を、無ければ `has_conflicts: false` と比較したref・検出方法を記録する。
+4. **競合を解消する（`resolve-conflicts`。競合ありのときだけ）。** 同じpackageの競合解消の入口を、`repository_path`、`user_input`、`document_destination`、`references` をそのまま渡して適用する。その入口が競合の調査、資料化、gate、解消、解消後の検証を担う。その入口が止まった（承認待ち、検証失敗、停止条件）ならこの入口も先へ進まず、その報告をそのまま返す。完了したら解消の概要、方針、資料のpathを後続へ使う。
+5. **検証する（`verify`）。** 設定fileの `verification.commands` を記載順に全件、作業branchで実行する。失敗したらPR本文の組み立てへ進まず、再現commandと残る問題を返す。
+6. **PR本文を組み立てる（`prepare-pull-request`）。** baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読み、titleとbodyへ目的、主な変更、検証commandと結果、既知の制約、未確認事項、競合を解消した場合はその概要と方針と資料の参照を書く。secret、local path、一時fileを本文へ入れない。bodyは一時領域のfileへ書き、その絶対pathを `pr_body_file` にする。
+7. **pushする（`push`）。** `action: push` を `agent-work-policy:agent-work-policy` へ渡す。action固有キーは足さない。
+8. **PRを作る（`create-pull-request`）。** `action: pull-request`、`title`、実在する `body_file` の絶対pathを渡す。返った `operation_result.pull_request` / `url` / `draft` を使う。
+9. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `bash scripts/gate.sh --report-ref <PR番号またはURL>` で内部レビュー完了の明示を待つ。標準出力のJSONが `waiting_for_human` で終了code `3` なら承認を待ち、利用者の明示承認後だけ `--approved` を付けて呼び直す（`approved` / `0`。`2` は引数不備）。承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
 
 各公開Skillへは1回の呼び出しで1操作だけを頼み、そのactionが使わないキーは渡さない。設定file、入力・出力YAML、依存先root、依存先の実行scriptは扱わない。
 
@@ -44,20 +46,17 @@ description: Gitの作業branchとbase branchの競合を検出し、現行実�
 
 止まるのは次の場合である。理由を報告し、未実行の公開操作を実行済みとして扱わない。
 
-- 設定fileが無い、または schema に合わない（`config.py` が `2`）。
+- 設定fileが無い、schema に合わない、git repositoryでない（`config.py` が `2`）。
 - `agent-work-policy` が `failed` を返した（`permission_denied` / `policy_missing` / `invalid_input` / 操作失敗）。`permission_denied` は承認質問へ変えない。
-- `write-doc` が `failed` を返した。gate・解消・公開操作へ進まない。
+- 競合解消の入口が止まった（承認待ち、検証失敗、その入口の停止条件）。その報告をそのまま返し、PR本文の組み立てへ進まない。
 - 検証commandが1件でも失敗した。PR本文の組み立てへ進まず、再現commandと残る問題を返す。
-- 無関係な未commit変更、別の進行中merge、base不明、必要な操作権限不足がある状態で競合解消を求められた。
 - 人間gate（`gate.sh` の `waiting_for_human`、`agent-work-policy` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ先へ進まない。
 
 次は止まらず、根拠を明示して進む。
 
-- 調査時のSHAまたは競合集合が変わった。再調査へ戻り、変わった範囲を記録して続ける。
-- 過去PRやissueを取得できず、両側の目的が一部しか復元できない。取得できない範囲と代わりに確認した履歴を明記し、復元できた目的から解消方針を仮説として立てて資料と報告に書く。
 - 開いているPRが `null`。「無いか、確認できなかった」として自分で重複を確認し、結果を報告に書く。
-- 競合が無い。資料化・gate・解消を飛ばし、比較したrefと検出方法を報告に残す。
+- 競合が無い。競合解消の入口を呼ばず、比較したrefと検出方法を報告に残す。
 
 ## 出力
 
-PR URLとnumber、head / base、競合の有無、資料の提示時点とpath、解消方針、検証結果、公開Git操作の結果と承認待ち・停止・未確認事項を報告する。
+PR URLとnumber、head / base、競合の有無と検出方法（解消した場合はその概要・方針・資料のpath）、検証commandと結果、公開Git操作の結果と承認待ち・停止・未確認事項を報告する。

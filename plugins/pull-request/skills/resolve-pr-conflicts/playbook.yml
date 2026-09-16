@@ -1,0 +1,67 @@
+# resolve-pr-conflicts — 作業branchとbase branchの競合を調査・資料化し、gateを経て解消・検証する。
+# 工程順はこのYAMLが正本で、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
+# repositoryごとの方針（conflict_report.timing / verification.commands）は <repo>/.harness-plugins/resolve-pr-conflicts.config.yml が持つ。
+# 公開Git操作（push / PR作成）はこの入口の仕事ではなく、作業場所の照会だけを agent-work-policy の公開契約で行う。
+version: 2
+name: resolve-pr-conflicts
+description: 作業branchとbase branchの競合を調査・資料化し、gateを経て意味を保って解消し、設定の検証を全件通す
+inputs: [repository_path, user_input, document_destination, references]
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+  - {plugin: agent-work-policy, marketplace: agent-work-policy}
+
+# stepsは記載順に実行する。script: 自分の入口内の処理。playbook: 外部packageの公開playbook。
+# 外部playbookの完全な入力objectは同じagentがneedsと利用者入力から実行時に組み立てる。
+# YAMLへ部分objectや動的placeholderを置かない。when: 実行時成果または設定fileの値が真のときだけ実行する。
+steps:
+  - id: read-policy
+    script: scripts/config.py
+    purpose: repository rootの設定file（conflict_report.timing / verification.commands）を read で読み、schemaを検査する。無ければ止まる
+    needs: [repository_path]
+    provides: [conflict_report, verification]
+  - id: workspace
+    playbook: agent-work-policy
+    purpose: 何も変えずに、いまの作業場所と状態（作業branch、clean、baseの有無）を受け取る
+    needs: [repository_path]
+    provides: [workspace, workspace_state, gate_state]
+  - id: inspect-conflicts
+    agent_work: invoking_agent
+    purpose: 現行実装、関連commit、過去PRから競合と両側の意図を調べる。競合が無ければ検出方法を添えてそう記録する
+    needs: [workspace, workspace_state, user_input]
+    provides: [conflict_state, conflict_assessment]
+  - id: report-before-resolution
+    playbook: write-doc
+    when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+    purpose: 同じagentが競合内容と推奨解消方針をkind:textのmaterialにし、公開保存先へ提案資料として保存して解消前に利用者へ示す
+    needs: [conflict_report, conflict_state, conflict_assessment, document_destination]
+    provides: [status, path, reason]
+  - id: approve-conflict-proposal
+    script: scripts/gate.sh
+    when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+    purpose: 提案資料を示した後、利用者の明示承認まで競合解消を止める
+    needs: [conflict_report, path]
+    provides: [conflict_proposal_approved]
+  - id: resolve-conflicts
+    agent_work: invoking_agent
+    when: conflict_state.has_conflicts
+    purpose: 調査した意図と現在状態を照合し、競合を解消して設定fileの検証commandを全件通す
+    needs: [conflict_report, verification, conflict_state, conflict_assessment]
+    conditional_needs:
+      - when: conflict_report.timing == before_resolution
+        needs: [conflict_proposal_approved]
+    provides: [conflict_resolution, conflict_verification]
+  - id: report-after-resolution
+    playbook: write-doc
+    when: conflict_state.has_conflicts && conflict_report.timing == after_resolution
+    purpose: 同じagentが起きていた競合、採った方針、修正、検証をkind:textのmaterialにし、公開保存先へ解消後の資料として保存する
+    needs: [conflict_report, conflict_state, conflict_assessment, conflict_resolution, conflict_verification, document_destination]
+    provides: [status, path, reason]
+  - id: report
+    agent_work: invoking_agent
+    purpose: 競合の有無と検出方法、資料の提示時点とpath、解消方針、検証結果、停止・未確認事項を報告する
+    needs: [conflict_state]
+    conditional_needs:
+      - when: conflict_state.has_conflicts
+        needs: [conflict_resolution, conflict_verification, path]
+      - when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
+        needs: [conflict_proposal_approved]

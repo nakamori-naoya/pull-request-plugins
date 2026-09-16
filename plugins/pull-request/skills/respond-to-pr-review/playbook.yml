@@ -1,11 +1,11 @@
 # respond-to-pr-review — PR reviewを評価し、採用分だけを修正・検証・commit・pushする。
 # 工程順はこのYAMLが正本で、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
-# repositoryごとの方針（report / permissions / gates / verification / git）は <repo>/.harness-plugins/respond-to-pr-review.config.yml が持つ。
+# repositoryごとの方針（report / permissions / gates / verification / git）は <repo>/.harness-plugins/respond-to-pr-review.config.yml が持ち、read-policy が読む。
 # 公開Git操作（commit / push）のpermissionとhuman gateは agent-work-policy の公開契約が所有する。
 version: 2
 name: respond-to-pr-review
 description: PR reviewを評価し、採用分だけを修正・検証・commit・pushする
-inputs: [repository_path, pull_request, user_input, document_destination]
+inputs: [repository_path, pull_request, user_input, document_destination, references]
 requires:
   - {plugin: write-doc, marketplace: write-doc}
   - {plugin: agent-work-policy, marketplace: agent-work-policy}
@@ -19,15 +19,20 @@ contract:
 # needs: 開始条件。provides: 完了時の成果物。when: 設定fileの値または実行時成果が真のときだけ実行。
 # conditional_needs: 同じ条件のときだけ増える開始条件。
 steps:
+  - id: read-policy
+    script: scripts/config.py
+    purpose: repository rootの設定file（report / permissions / gates / verification / git）を read で読み、schemaを検査する。無ければ止まる
+    needs: [repository_path]
+    provides: [report, permissions, gates, verification_commands, git]
   - id: preflight
     script: scripts/review-gate.py
-    purpose: repositoryと開始時worktree状態を検査する
-    needs: [repository_path, pull_request]
+    purpose: 開始時worktree状態を検査する
+    needs: [repository_path, pull_request, git]
     provides: [baseline]
   - id: review-import-permission
     script: scripts/review-gate.py
     purpose: review commentを取得してよいpermissionを確認し、禁止なら取得前に止める
-    needs: [baseline]
+    needs: [baseline, permissions]
     provides: [review_import_allowed]
   - id: assess
     agent_work: invoking_agent
@@ -38,18 +43,18 @@ steps:
     script: scripts/review-gate.py
     purpose: 評価結果を人間へ提示し、設定されたgateを通す
     when: assessment.accepted_count > 0
-    needs: [assessment]
+    needs: [assessment, gates]
     provides: [assessment_approved]
   - id: report-after-assessment
     playbook: write-doc
     when: assessment.accepted_count > 0 && report.enabled && report.timing == after_assessment
     purpose: 同じagentが評価・採否判断をkind:textのmaterialにし、公開保存先へ資料化する
-    needs: [assessment, assessment_approved, document_destination]
+    needs: [report, assessment, assessment_approved, document_destination]
     provides: [status, path, reason]
   - id: modify-gate
     script: scripts/review-gate.py
     purpose: 修正許可と修正前gateを確認する
-    needs: [assessment_approved]
+    needs: [assessment_approved, permissions, gates]
     conditional_needs:
       - when: assessment.accepted_count > 0 && report.enabled && report.timing == after_assessment
         needs: [path]
@@ -62,23 +67,23 @@ steps:
   - id: modified-gate
     script: scripts/review-gate.py
     purpose: 修正差分を人間へ提示し、修正後gateを通す
-    needs: [changes, change_report]
+    needs: [changes, change_report, gates]
     provides: [changes_approved]
   - id: verify
     agent_work: invoking_agent
     purpose: 設定された検証を実行する
-    needs: [changes_approved]
+    needs: [changes_approved, verification_commands]
     provides: [verification]
   - id: report-before-commit
     playbook: write-doc
     when: report.enabled && report.timing == before_commit
     purpose: 同じagentが評価、変更差分、検証結果をkind:textのmaterialにし、公開保存先へcommit前資料として保存する
-    needs: [assessment, change_report, verification, document_destination]
+    needs: [report, assessment, change_report, verification, document_destination]
     provides: [status, path, reason]
   - id: commit
     playbook: agent-work-policy
     purpose: 限定したpathとmessageを公開入力として渡し、permissionとhuman gateに従ってcommitする
-    needs: [verification]
+    needs: [verification, git]
     conditional_needs:
       - when: report.enabled && report.timing == before_commit
         needs: [path]
@@ -87,7 +92,7 @@ steps:
     playbook: write-doc
     when: report.enabled && report.timing == before_push
     purpose: 同じagentが評価、変更差分、検証結果、commitをkind:textのmaterialにし、公開保存先へpush前資料として保存する
-    needs: [assessment, change_report, verification, commit, document_destination]
+    needs: [report, assessment, change_report, verification, commit, document_destination]
     provides: [status, path, reason]
   - id: push
     playbook: agent-work-policy
@@ -101,5 +106,5 @@ steps:
     playbook: write-doc
     when: report.enabled && report.timing == after_push
     purpose: 同じagentが評価からpush結果までをkind:textのmaterialにし、公開保存先へ資料化する
-    needs: [assessment, change_report, verification, commit, pushed_branch, document_destination]
+    needs: [report, assessment, change_report, verification, commit, pushed_branch, document_destination]
     provides: [status, path, reason]

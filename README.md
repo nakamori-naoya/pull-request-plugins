@@ -1,6 +1,6 @@
 # Pull Request
 
-Pull Requestの競合調査・解消・作成と、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。公開するインストール対象はpackage `pull-request`（`./plugins/pull-request`）1件で、公開入口は自己完結skill `open-pull-request` と `respond-to-pr-review` の2つである。
+Pull Requestの作成、競合の調査・解消、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。公開するインストール対象はpackage `pull-request`（`./plugins/pull-request`）1件で、公開入口は自己完結skill `open-pull-request`（平時）、`resolve-pr-conflicts`（例外）、`respond-to-pr-review` の3つである。
 
 ## こんなときに使う
 
@@ -18,10 +18,11 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 
 | やりたいこと | 公開入口 | repository設定 |
 |---|---|---|
-| 競合調査・必要な解消・PR作成を一続きで行う | `open-pull-request` | `<repo>/.harness-plugins/open-pull-request.config.yml` |
+| 検証済みbranchからPRを作る（競合を検出したときだけ `resolve-pr-conflicts` を呼ぶ） | `open-pull-request` | `<repo>/.harness-plugins/open-pull-request.config.yml` |
+| 指定branchまたはPRの競合を調査・資料化し、gateを経て解消・検証する | `resolve-pr-conflicts` | `<repo>/.harness-plugins/resolve-pr-conflicts.config.yml` |
 | 評価から修正、検証、公開まで一続きで行う | `respond-to-pr-review` | `<repo>/.harness-plugins/respond-to-pr-review.config.yml` |
 
-設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。公開Git操作（push、PR作成、commit）のpolicyは `agent-work-policy` の設定（`<repo>/.harness-plugins/agent-work-policy.config.yml`）が持ち、この2つの設定fileへは書けない。
+設定fileは1入口1つ、1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。読み取りは各入口の `scripts/config.py check|read --repo <repository_path>` が行い、stdoutのJSON 1文書と終了code（`0` / 失敗は `2` と `reason`）を返す。公開Git操作（push、PR作成、commit）のpolicyは `agent-work-policy` の設定（`<repo>/.harness-plugins/agent-work-policy.config.yml`）が持ち、これらの設定fileへは書けない。各入口は任意入力 `references`（追加で従う資料の絶対path配列）を受け、プロジェクト固有の規約は対象repositoryのAGENTS.md / CLAUDE.mdと `references` で渡す。
 
 ## 利用例
 
@@ -129,6 +130,7 @@ bash scripts/validate.sh
 
 - marketplaceの `source` を `./plugins` から `./plugins/pull-request` へ、公開入口を `plugins/pull-request/skills/{open-pull-request, respond-to-pr-review}` へ移した。隣接 `playbook.yml` の `name` は入口名と同じになった。配置変更はinstall identityを変えるため、release時にmajor bumpが要る。
 - 内部skill `pr-conflict-inspect` / `pr-conflict-resolve` / `pr-create` は `open-pull-request` へ、`pr-review-assess` / `pr-review-apply` / `pr-review-verify` は `respond-to-pr-review` へ統合した。判断規律の参照文書と決定論的tool（`assessment.py` / `brief.py` / `verify.sh` / `review-gate.py` / `gate.sh`）は入口へ移した。
+- 同日のハーネス進化第3回で、競合の調査・資料化・gate・解消・検証を `resolve-pr-conflicts` 公開入口へ分け、`open-pull-request` は平時の流れ（設定読取 → 照会 → 競合検出 → 検証 → PR準備 → push → PR作成 → レビュー受付gate）に絞った。競合を検出したときだけ `open-pull-request` が `resolve-pr-conflicts` を `steps[].skill` で呼ぶ。`conflict_report.timing` は `resolve-pr-conflicts.config.yml` へ移し、`open-pull-request.config.yml` は `verification.commands`（PR作成前の検証）だけを持つ。設定の読み取りは3入口とも `scripts/config.py check|read --repo` に揃え、`review-gate.py` は同じ固定pathを `--repo` から解決する。
 - repositoryごとの方針（`conflict_report.timing` / `verification.commands`、`report` / `permissions` / `gates` / `verification` / `git`）は `playbook.yml` から `<repo>/.harness-plugins/<入口>.config.yml` へ移し、1層・必須にした。`review-gate.py` が schema を検査し、公開Git操作のpermissionやgateの混入を拒否する。
 - 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `validate-config.sh`）、4層の設定探索、入口ごとのnested manifest、`dependencies.yml` による束縛の実行時解決を撤去した。
 - `agent-work-policy` の呼び名は `agent-work-policy:work-with-policy` から `agent-work-policy:agent-work-policy` になった。
