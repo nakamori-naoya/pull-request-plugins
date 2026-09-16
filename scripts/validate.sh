@@ -1,566 +1,174 @@
 #!/usr/bin/env bash
-# Scenario: repositoryのplugin集合、manifest、marketplace、構文が一致する
+# Scenario: pull-request package が公開入口2つで自己完結し、各入口の決定論的toolが閉じた契約を守り、公開Git操作を自前で実行しない
+# 機械検査は宣言と実体の対応、隣接playbook.ymlの契約、設定fileのschema、gate / review-gate / verify の入出力、素の公開操作の不在だけを判定する。
+# 競合解消の妥当性、review採否の判断、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
-# 検査は素の環境から始める。呼び出した人の開発用mapやtest cacheが混ざると、
-# 「実配布物へ解決できている」ことを確かめられない。必要な検査だけが自分で設定する。
-unset HARNESS_PLUGIN_DEV_ROOTS HARNESS_PLUGIN_CACHE_ROOT
-# **runtimeを開発環境から拾わせない。** resolverはHARNESS_PLUGIN_RUNTIMEが無いと
-# CLAUDE_PLUGIN_ROOT / CODEX_HOME や利用者のinstalled-cacheからruntimeを推測する。
-# 手元にそれらがあると通り、何も入っていないCI runnerでは
-# dependency-runtime-unresolved で落ちる。**検査するruntimeはここで明示する。**
-# 両runtimeを見るprobeは、その場で自分のHARNESS_PLUGIN_RUNTIMEを渡して上書きする。
-unset CLAUDE_PLUGIN_ROOT CODEX_HOME CLAUDE_PLUGIN_CACHE CODEX_PLUGIN_CACHE
-export HARNESS_PLUGIN_RUNTIME=codex
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plugin-repository-validation.XXXXXX") || exit 2
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/pull-request-validation.XXXXXX") || exit 2
+export TMPDIR="$TMP_ROOT"
+export PYTHONDONTWRITEBYTECODE=1
 trap 'rm -rf "$TMP_ROOT"' EXIT
 failed=0
-python3 "$ROOT/scripts/test-hardening.py" || failed=1
-python3 "$ROOT/scripts/sync-runtime.py" --check || failed=1
-# 複製が正本と一致することを、正本そのものに対して確かめる。**兄弟が無ければ失敗させる。**
-RUNTIME_SOURCE="${HARNESS_RUNTIME_SOURCE:-$ROOT/../product-planning-plugins/shared/runtime-source}"
-if [ ! -d "$RUNTIME_SOURCE" ]; then
-  echo "[validate] runtime正本が無い: ${RUNTIME_SOURCE}（HARNESS_RUNTIME_SOURCE で指定する）" >&2
-  failed=1
-else
-  python3 "$ROOT/scripts/sync-runtime.py" --check --source "$RUNTIME_SOURCE" \
-    || { echo '[validate] runtime複製が正本とずれている' >&2; failed=1; }
-fi
-python3 -m unittest discover -s "$ROOT/tests" -p test_verification_cli.py || failed=1
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1"; failed=1; }
 
+PACKAGE="$ROOT/plugins/pull-request"
+ENTRY_DIR="$PACKAGE/skills"
+ENTRIES=(open-pull-request respond-to-pr-review)
 
-validate_dependency_resolution_contract() {
-  local fixture="$TMP_ROOT/dependency-resolution"
-  local status=0
-  local out
-
-  # (1) 同じrepositoryの内部pluginは、実物のplaybook rootから repository として解決する。
-  local pull="$ROOT/plugins/playbooks/pull-request/pull-request"
-  local runtime
-  for runtime in codex claude; do
-    out=$(HARNESS_PLUGIN_RUNTIME="$runtime" python3 "$pull/scripts/resolve-dependency.py" \
-      --plugin-root "$pull" --plugin pr-create --marketplace pull-request 2> "$fixture-repo-$runtime.err") || status=1
-    jq -e --arg runtime "$runtime" '
-      .runtime==$runtime and .plugin=="pr-create" and .source_kind=="repository" and
-      .dependency_scope=="internal" and .contract=="pull-request/pr-create"' >/dev/null <<<"$out" || status=1
-  done
-
-  # 呼び出し元 bundle を1つ作る。**resolverは所属package宣言の中からしか呼べない。**
-  local caller="$fixture/consumer/plugins/playbooks/caller"
-  # test cache root は呼び出し元 plugin root の直下だけを許される。
-  local cache="$fixture/consumer/plugins/playbooks/caller/.harness-plugin-test-cache"
-  mkdir -p "$caller/scripts" "$caller/.claude-plugin" "$caller/.codex-plugin" \
-           "$fixture/consumer/plugins/.claude-plugin" "$fixture/consumer/plugins/.codex-plugin" \
-           "$fixture/repo" "$cache"
-  git -C "$fixture/repo" init -q
-  cp "$ROOT/shared/playbook/resolve-dependency.py" "$caller/scripts/resolve-dependency.py"
-  cp "$ROOT/shared/playbook/resolve.sh" "$caller/scripts/resolve.sh"
-  cp "$ROOT/shared/playbook/state.py" "$caller/scripts/state.py"
-  cp "$ROOT/shared/prepare.sh" "$caller/scripts/prepare.sh"
-  cp "$ROOT/shared/run-config.py" "$caller/scripts/run-config.py"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$caller/scripts/validate-config.sh"
-  chmod 755 "$caller/scripts"/*
-  printf -- '---\nname: caller\ndescription: fixture\n---\nfixture\n' > "$caller/SKILL.md"
-  for runtime in claude codex; do
-    printf '%s\n' '{"name":"caller","version":"1.0.0","description":"fixture","skills":"./","metadata":{"harness":{"contractVersion":1}}}' \
-      > "$caller/.${runtime}-plugin/plugin.json"
-    printf '%s\n' '{"name":"caller","version":"1.0.0","description":"fixture","skills":["./playbooks/caller"],"metadata":{"harness":{"installationSurface":"playbook-package","marketplace":"caller-market","entryRoot":"./playbooks/caller","playbooks":{"caller":"./playbooks/caller"},"internalPlugins":{},"contractVersion":1,"implements":[{"id":"caller-market/caller","version":1,"kind":"playbook","playbook":"caller"}]}}}' \
-      > "$fixture/consumer/plugins/.${runtime}-plugin/plugin.json"
-  done
-  local caller_root
-  caller_root=$(cd "$caller" && pwd -P)
-
-  # provider fixture は、公開playbook packageと同じ形で作る。**bare manifestで通さない。**
-  make_provider_fixture() { # make_provider_fixture <package root> <version>
-    local package="$1" version="$2" entry="$1/playbooks/fixture"
-    mkdir -p "$entry/scripts" "$entry/.claude-plugin" "$entry/.codex-plugin" \
-             "$package/.claude-plugin" "$package/.codex-plugin"
-    cp "$ROOT/shared/playbook/resolve.sh" "$entry/scripts/resolve.sh"
-    cp "$ROOT/shared/playbook/resolve-dependency.py" "$entry/scripts/resolve-dependency.py"
-    cp "$ROOT/shared/playbook/state.py" "$entry/scripts/state.py"
-    cp "$ROOT/shared/prepare.sh" "$entry/scripts/prepare.sh"
-    cp "$ROOT/shared/run-config.py" "$entry/scripts/run-config.py"
-    printf '#!/usr/bin/env bash\nexit 0\n' > "$entry/scripts/validate-config.sh"
-    chmod 755 "$entry/scripts"/*
-    printf -- '---\nname: fixture-skill\ndescription: fixture\n---\nfixture\n' > "$entry/SKILL.md"
-    printf '%s\n' 'version: 2' 'name: fixture' 'description: fixture' 'instructions:' \
-      '  execution: {directive: fixture}' 'requires:' \
-      '  - {plugin: fixture-inner, marketplace: fixture-market}' 'steps:' \
-      '  - {id: run, purpose: fixture, skill: fixture-inner-skill}' > "$entry/playbook.yml"
-    mkdir -p "$package/skills/inner/.claude-plugin" "$package/skills/inner/.codex-plugin"
-    printf -- '---\nname: fixture-inner-skill\ndescription: fixture\n---\nfixture\n' > "$package/skills/inner/SKILL.md"
-    local runtime
-    for runtime in claude codex; do
-      printf '{"name":"fixture-plugin","version":"%s","description":"fixture","skills":["./playbooks/fixture"],"metadata":{"harness":{"installationSurface":"playbook-package","marketplace":"fixture-market","entryRoot":"./playbooks/fixture","playbooks":{"fixture":"./playbooks/fixture"},"internalPlugins":{"fixture-inner":"./skills/inner"},"contractVersion":1,"implements":[{"id":"fixture-market/fixture-plugin","version":1,"kind":"playbook","playbook":"fixture"}]}}}\n' \
-        "$version" > "$package/.${runtime}-plugin/plugin.json"
-      printf '{"name":"fixture","version":"%s","description":"fixture","skills":"./","metadata":{"harness":{"contractVersion":1}}}\n' \
-        "$version" > "$entry/.${runtime}-plugin/plugin.json"
-      printf '{"name":"fixture-inner","version":"%s","description":"fixture","skills":"./","metadata":{"harness":{"contractVersion":1}}}\n' \
-        "$version" > "$package/skills/inner/.${runtime}-plugin/plugin.json"
-    done
-  }
-
-  # (2) installed-cache から最も高いsemverを採る。
-  local version
-  for version in 1.0.0 9.9.9; do
-    make_provider_fixture "$cache/fixture-market/fixture-plugin/$version" "$version"
-  done
-  for runtime in codex claude; do
-    out=$(HARNESS_PLUGIN_RUNTIME="$runtime" HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-      python3 "$caller/scripts/resolve-dependency.py" --plugin-root "$caller_root" \
-      --plugin fixture-plugin --marketplace fixture-market 2> "$fixture/cache-$runtime.err") || status=1
-    jq -e --arg runtime "$runtime" '
-      .runtime==$runtime and .version=="9.9.9" and .source_kind=="installed-cache" and
-      .dependency_scope=="external"' >/dev/null <<<"$out" || status=1
-  done
-
-  # (3) dev-map が installed-cache より優先する。
-  make_provider_fixture "$fixture/dev" 3.4.5
-  jq -n --arg root "$(cd "$fixture/dev" && pwd -P)" '{schema:1,dependencies:{"fixture-market/fixture-plugin":$root}}' > "$fixture/dev-map.json"
-  out=$(HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-map.json" HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-    python3 "$caller/scripts/resolve-dependency.py" --plugin-root "$caller_root" \
-    --plugin fixture-plugin --marketplace fixture-market 2> "$fixture/dev.err") || status=1
-  jq -e '.version=="3.4.5" and .source_kind=="dev-map"' >/dev/null <<<"$out" || status=1
-
-  reject_resolution() { # reject_resolution <名前> <期待コード> <環境なしの引数...>
-    local name="$1" expected="$2"; shift 2
-    if HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-       python3 "$caller/scripts/resolve-dependency.py" --plugin-root "$caller_root" "$@" \
-       >/dev/null 2> "$fixture/$name.err"; then
-      echo "[validate] 解決を拒否できない: $name" >&2
-      status=1
-    elif ! rg -q "$expected" "$fixture/$name.err"; then
-      echo "[validate] 解決を期待した理由で拒否できない: $name ($(head -1 "$fixture/$name.err"))" >&2
-      status=1
-    fi
-  }
-  # (4) 見つからない依存。
-  reject_resolution missing 'error:dependency-missing.*plugin=missing-plugin.*marketplace=fixture-market' \
-    --plugin missing-plugin --marketplace fixture-market
-  # (5) manifest identity の食い違い。
-  mv "$cache/fixture-market/fixture-plugin/9.9.9/.codex-plugin/plugin.json" "$fixture/correct-manifest.json"
-  jq '.name="other-plugin"' "$fixture/correct-manifest.json" \
-    > "$cache/fixture-market/fixture-plugin/9.9.9/.codex-plugin/plugin.json"
-  reject_resolution identity 'manifest-identity-mismatch' --plugin fixture-plugin --marketplace fixture-market
-  mv "$fixture/correct-manifest.json" "$cache/fixture-market/fixture-plugin/9.9.9/.codex-plugin/plugin.json"
-
-  # (6) marketplace catalog に同名entryが2つあれば止まる。
-  mkdir -p "$fixture/consumer/.agents/plugins"
-  jq -n '{name:"fixture-market",plugins:[{name:"fixture-plugin",source:{source:"local",path:"./plugins/a"}},{name:"fixture-plugin",source:{source:"local",path:"./plugins/b"}}]}' \
-    > "$fixture/consumer/.agents/plugins/marketplace.json"
-  reject_resolution ambiguous 'source_kind=repository reason=marketplace-entry' --plugin fixture-plugin --marketplace fixture-market
-  rm -rf "$fixture/consumer/.agents"
-
-  # (7) playbook経路：requires に無いskillを指すstepは止まる。
-  playbook_fixture() { # playbook_fixture <requires断片> <step断片>
-    { printf '%s\n' 'version: 2' 'name: caller' 'description: fixture' 'instructions:' \
-        '  execution: {directive: fixture}' 'requires:'
-      printf '%s\n' "$1"
-      printf '%s\n' 'steps:' '  - {id: invoke, purpose: fixture, skill: expected-skill}'
-    } > "$caller/playbook.yml"
-  }
-  playbook_fixture '  - {plugin: fixture-plugin, marketplace: fixture-market}'
-  if XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-     bash "$caller/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/skill.err"; then
-    status=1
+# ── 配置と identity ──────────────────────────────────────────────────────
+for market in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
+  if jq -e '.name=="pull-request" and (.plugins|length)==1 and .plugins[0].name=="pull-request" and .plugins[0].version=="3.0.3"
+            and ((.plugins[0].source=="./plugins/pull-request") or (.plugins[0].source=={"source":"local","path":"./plugins/pull-request"}))' "$ROOT/$market" >/dev/null; then
+    pass "$market identityとsource"
   else
-    rg -q 'steps が指すスキルが requires のプラグインに無い: expected-skill' "$fixture/skill.err" || status=1
+    fail "$market identityとsource"
   fi
-  # (8) requires は {plugin, marketplace} の2キーだけ。version固定も裸文字列も受け付けない。
-  playbook_fixture '  - {plugin: fixture-plugin, marketplace: fixture-market, version: 1.0.0}'
-  if XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-     bash "$caller/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/pin.err"; then status=1; fi
-  playbook_fixture '  - fixture-plugin'
-  if XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_RUNTIME=codex HARNESS_PLUGIN_CACHE_ROOT="$cache" \
-     bash "$caller/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/bare.err"; then status=1; fi
-
-  return "$status"
-}
-
-validate_publication_delegation_contract() {
-  local fixture="$TMP_ROOT/publication-delegation"
-  local review_pb="$ROOT/plugins/playbooks/pull-request/pr-review-response"
-  local pull="$ROOT/plugins/playbooks/pull-request/pull-request"
-  local status=0
-
-  has_raw_publication_operation() {
-    local target="$1"
-    rg -n --glob '*.sh' --glob '*.py' \
-      '\bgit[[:space:]]+(commit|push)\b|\bgh[[:space:]]+pr[[:space:]]+(create|merge)\b|["'"'']git["'"''][[:space:]]*,[[:space:]]*["'"''](commit|push)["'"'']|["'"'']gh["'"''][[:space:]]*,[[:space:]]*["'"'']pr["'"''][[:space:]]*,[[:space:]]*["'"''](create|merge)["'"'']' \
-      "$target" >/dev/null
-  }
-
-  # 公開操作の直接実行は、配布物の種類を問わず許さない。説明文は対象外にし、
-  # shell と Python の実行形だけを見る。
-  if has_raw_publication_operation "$ROOT/plugins"; then
-    status=1
-  fi
-  find "$ROOT/plugins" -path '*/scripts/publish.sh' -type f -print -quit | grep -q . && status=1
-
-  mkdir -p "$fixture"
-  yq -o=json -I=0 '.' "$review_pb/playbook.yml" > "$fixture/review_pb.json"
-  yq -o=json -I=0 '.' "$pull/playbook.yml" > "$fixture/pull.json"
-  # 実物playbook自身を固有validatorへ渡す。以後の変異も同じ経路で拒否される。
-  bash "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" >/dev/null 2>&1 || status=1
-  bash "$pull/scripts/validate-config.sh" "$fixture/pull.json" >/dev/null 2>&1 || status=1
-
-  # 実物と同じvalidator経路で各変異を拒否する。
-  reject_mutation() { # reject_mutation <validator> <元JSON> <名前> <jq式>
-    local validator="$1" source="$2" name="$3" filter="$4"
-    jq "$filter" "$source" > "$fixture/$name.json" || { status=1; return; }
-    if bash "$validator" "$fixture/$name.json" >/dev/null 2>&1; then
-      echo "[validate] 変異を拒否できない: $name" >&2
-      status=1
-    fi
-  }
-  # M4b: 外部pluginのscriptを直接実行する形へ戻す変異は拒否する。
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4b \
-    '(.steps[] | select(.id=="commit")) |= (.script="scripts/review-gate.py" | .plugin="agent-work-policy" | del(.playbook) | del(.input))'
-  # M4c/M4d: YAMLへaction-onlyの部分入力を戻す変異と、委譲自体の欠落を拒否する。
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4c \
-    '(.steps[] | select(.id=="commit")).input={action:"commit"}'
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m4d \
-    'del(.steps[] | select(.id=="commit").playbook)'
-  # C02: accept 0件ならgate前に終了する分岐を消す変異は拒否する。
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" c02 \
-    'del(.steps[] | select(.id=="assessment-gate").when)'
-  # review取得permissionを取得後へずらす変異は拒否する。
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" c02_permission \
-    '(.steps[] | select(.id=="assess").needs)=["baseline"]'
-  # M5: 公開操作の独自permissionを再導入する変異は拒否する。
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m5 '.permissions.commit=true'
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" m5b '.gates.before_push=true'
-  # M6: base/remote/下書き設定をplaybookへ複製する変異は拒否する。
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" m6 \
-    '.git={base_branch:"main",remote:"origin"} | .pull_request={draft:false}'
-  # M9: 公開操作の委譲を自前scriptへ差し替える変異は拒否する。
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" m9 \
-    '(.steps[] | select(.id=="create-pull-request")) |= (.script="scripts/create.sh" | del(.playbook) | del(.input))'
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" c01 \
-    '(.steps[] | select(.id=="workspace")).input={action:"inspect"}'
-  # M10: 外部rootからpathを組み立てる引数を再導入する変異は拒否する。
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" m10 \
-    '(.steps[] | select(.id=="prepare-pull-request")).arguments=["--root=${.deps[\"agent-work-policy\"].root}"]'
-
-  # F6: 公開保存先と各時点の認知結果がwrite-doc工程へ届く配線を固定する。
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_no_destination_input \
-    '.inputs |= map(select(.!="document_destination"))'
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_no_report_needs \
-    '(.steps[] | select(.id=="report-before-resolution")).needs=[]'
-  reject_mutation "$pull/scripts/validate-config.sh" "$fixture/pull.json" f6_pull_unconditional_report \
-    '(.steps[] | select(.id=="report-after-resolution")).when="true"'
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" f6_review_no_destination_input \
-    '.inputs |= map(select(.!="document_destination"))'
-  for report_id in report-after-assessment report-before-commit report-before-push report-after-push; do
-    reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" "f6_${report_id}_no_needs" \
-      "(.steps[] | select(.id==\"$report_id\")).needs=[]"
-  done
-  reject_mutation "$review_pb/scripts/validate-config.sh" "$fixture/review_pb.json" f6_review_accept_zero_report \
-    '(.steps[] | select(.id=="report-after-assessment")).when="report.enabled && report.timing == after_assessment"'
-
-  # 公開document_destinationの新規/更新排他とwrite-doc直接結果の停止境界。
-  destination_contract='type=="object" and
-    (((keys|sort)==["name","output_directory"] and (.output_directory|type=="string" and startswith("/")) and (.name|type=="string" and endswith(".md"))) or
-     ((keys|sort)==["update_target"] and (.update_target|type=="string" and startswith("/") and endswith(".md"))))'
-  jq -ne --arg output_directory "$fixture" --arg name report.md \
-    '{output_directory:$output_directory,name:$name} | '"$destination_contract" >/dev/null || status=1
-  jq -ne --arg update_target "$fixture/report.md" \
-    '{update_target:$update_target} | '"$destination_contract" >/dev/null || status=1
-  if jq -ne --arg output_directory "$fixture" --arg name report.md --arg update_target "$fixture/report.md" \
-    '{output_directory:$output_directory,name:$name,update_target:$update_target} | '"$destination_contract" >/dev/null; then status=1; fi
-  if jq -ne --arg output_directory "$fixture" \
-    '{output_directory:$output_directory} | '"$destination_contract" >/dev/null; then status=1; fi
-  report_result_contract='(.status=="completed" and (.path|type=="string" and startswith("/")) and (has("reason")|not)) or
-    (.status=="failed" and (.reason|type=="string" and length>0) and (has("path")|not))'
-  jq -ne --arg path "$fixture/report.md" '{status:"completed",path:$path} | '"$report_result_contract" >/dev/null || status=1
-  jq -ne '{status:"failed",reason:"write-doc failed"} | '"$report_result_contract" >/dev/null || status=1
-  if jq -ne '{status:"failed",reason:"write-doc failed",path:"/tmp/not-completed.md"} | '"$report_result_contract" >/dev/null; then status=1; fi
-
-  # 同じ代表入力で条件だけを変え、未使用保存先を先頭で必須化しない境界を確認する。
-  pull_report_request='(.has_conflicts and (.timing=="before_resolution" or .timing=="after_resolution")) as $due |
-    if $due then (.document_destination | '"$destination_contract"') else true end'
-  jq -ne '{has_conflicts:false,timing:"before_resolution"} | '"$pull_report_request" >/dev/null || status=1
-  if jq -ne '{has_conflicts:true,timing:"before_resolution"} | '"$pull_report_request" >/dev/null; then status=1; fi
-  jq -ne --arg output_directory "$fixture" \
-    '{has_conflicts:true,timing:"before_resolution",document_destination:{output_directory:$output_directory,name:"conflicts.md"}} | '"$pull_report_request" >/dev/null || status=1
-  review_report_request='((.accepted_count>0) and .enabled and
-      (.timing=="after_assessment" or .timing=="before_commit" or .timing=="before_push" or .timing=="after_push")) as $due |
-    if $due then (.document_destination | '"$destination_contract"') else true end'
-  jq -ne '{accepted_count:0,enabled:true,timing:"after_assessment"} | '"$review_report_request" >/dev/null || status=1
-  jq -ne '{accepted_count:1,enabled:false,timing:"before_commit"} | '"$review_report_request" >/dev/null || status=1
-  if jq -ne '{accepted_count:1,enabled:true,timing:"before_commit"} | '"$review_report_request" >/dev/null; then status=1; fi
-  jq -ne --arg update_target "$fixture/review.md" \
-    '{accepted_count:1,enabled:true,timing:"before_commit",document_destination:{update_target:$update_target}} | '"$review_report_request" >/dev/null || status=1
-
-  # M8/M8b/M12: shellとsubprocess list形式の素の公開操作を拒否する。
-  mkdir -p "$fixture/plugins"
-  printf '%s\n' 'git push origin branch' > "$fixture/plugins/raw.sh"
-  printf '%s\n' 'subprocess.run(["gh", "pr", "create", "--fill"])' > "$fixture/plugins/m8b.py"
-  printf '%s\n' 'subprocess.run(["git", "push"])' > "$fixture/plugins/m12.py"
-  has_raw_publication_operation "$fixture/plugins" || status=1
-
-  return "$status"
-}
-
-# 実配布物の provider package を指す。sibling checkout を既定にし、環境変数で差し替えられる。
-AWP_PACKAGE="${HARNESS_AWP_PACKAGE:-$ROOT/../agent-work-policy-plugins/plugins}"
-WRITE_DOC_PACKAGE="${HARNESS_WRITE_DOC_PACKAGE:-$ROOT/../write-doc-plugins/plugins}"
-
-# 実配布物への dev-map を作る。**fixtureだけで緑にしない。**
-make_provider_dev_map() { # make_provider_dev_map <出力path>
-  local out="$1"
-  [ -d "$AWP_PACKAGE" ] || { echo "[validate] 実配布物が無い: ${AWP_PACKAGE}（HARNESS_AWP_PACKAGE で指定する）" >&2; return 1; }
-  [ -d "$WRITE_DOC_PACKAGE" ] || { echo "[validate] 実配布物が無い: ${WRITE_DOC_PACKAGE}（HARNESS_WRITE_DOC_PACKAGE で指定する）" >&2; return 1; }
-  jq -n --arg awp "$(cd "$AWP_PACKAGE" && pwd -P)" --arg doc "$(cd "$WRITE_DOC_PACKAGE" && pwd -P)" \
-    '{schema:1,dependencies:{"agent-work-policy/agent-work-policy":$awp,"write-doc/write-doc":$doc}}' > "$out"
-}
-
-# 消費側の文書・設定・scriptに外部依存の内部の作りが漏れていないかを静的に見る。
-validate_consumer_contract_lint() {
-  local fixture="$TMP_ROOT/consumer-lint"
-  local status=0
-  mkdir -p "$fixture"
-  make_provider_dev_map "$fixture/dev-roots.json" || return 1
-  for runtime in claude codex; do
-    HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
-      python3 "$ROOT/scripts/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
-  done
-  return "$status"
-}
-
-# 実際に配布されている provider package に対して、両runtimeで解決する。
-validate_real_distribution_resolution() {
-  local fixture="$TMP_ROOT/real-distribution"
-  local status=0
-  mkdir -p "$fixture/repo"
-  git -C "$fixture/repo" init -q
-  make_provider_dev_map "$fixture/dev-roots.json" || return 1
-  local playbook
-  for playbook in pull-request pr-review-response; do
-    local root="$ROOT/plugins/playbooks/pull-request/$playbook"
-    local runtime
-    for runtime in claude codex; do
-      if ! XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_RUNTIME="$runtime" \
-           HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
-           bash "$root/scripts/resolve.sh" "$fixture/repo" > "$fixture/$playbook-$runtime.yml" 2> "$fixture/$playbook-$runtime.err"; then
-        echo "[validate] 実配布物に対して解決できない: $playbook ($runtime) $(head -3 "$fixture/$playbook-$runtime.err")" >&2
-        status=1
-        continue
-      fi
-      yq -o=json -I=0 '.' "$fixture/$playbook-$runtime.yml" > "$fixture/$playbook-$runtime.json"
-      # 外部依存は2つだけで、どちらも契約を自己宣言した公開playbookである。
-      jq -e '
-        (.deps | to_entries | map(select(.value.dependency_scope=="external")) | map(.key) | sort)
-          ==["agent-work-policy","write-doc"] and
-        .deps["agent-work-policy"].contract=="agent-work-policy/agent-work-policy" and
-        .deps["write-doc"].contract=="write-doc/write-doc" and
-        (.deps["agent-work-policy"].implements
-          | map(select(.id=="agent-work-policy/agent-work-policy" and .version==1 and .kind=="playbook"))
-          | length==1) and
-        (.deps["write-doc"].implements
-          | map(select(.id=="write-doc/write-doc" and .version==2 and .kind=="playbook"))
-          | length==1) and
-        # 入口は entry で指す。skill名で指す形は公開面に無い。
-        (.deps["agent-work-policy"].entry|type=="string" and endswith("/SKILL.md")) and
-        (.deps["write-doc"].entry|type=="string" and endswith("/SKILL.md")) and
-        (.deps["agent-work-policy"].entry_skill|type=="string") and
-        # read-only の照会を含め、実配布物が宣言する動作を要求している。
-        (.deps["agent-work-policy"].implements[0].actions|length==10) and
-        (.deps["agent-work-policy"].implements[0].actions|index("inspect")!=null) and
-        (.resolution.bindings_lock|type=="string" and startswith("/")) and
-        # 外部依存を skill: / script: で掴んでいない。
-        all(.playbook.steps[]; (.plugin // "") as $p | $p!="agent-work-policy" and $p!="write-doc") and
-        # action-only の静的入力は置かない。同じagentが needs の実値から公開入力objectを
-        # 組み立て、固定の公開playbook名を直接呼ぶ。ここでは入口と対象stepを観測する。
-        all(.playbook.steps[] | select(.playbook=="agent-work-policy"); has("input") | not) and
-        (if .playbook.name=="pull-request" then
-           ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .id] | sort)
-             ==["create-pull-request","push","ready-for-review","workspace"]
-         elif .playbook.name=="pr-review-response" then
-           ([.playbook.steps[] | select(.playbook=="agent-work-policy") | .id] | sort)
-             ==["commit","push"]
-         else false end) and
-        all(.playbook.steps[] | select(.playbook=="write-doc"); .provides==["status","path","reason"])
-      ' "$fixture/$playbook-$runtime.json" >/dev/null \
-        || { echo "[validate] 実配布物への解決結果が契約どおりでない: $playbook ($runtime)" >&2; status=1; }
-      # 宣言された契約版の公開面が実在する。write-doc v2 は直接呼出しなので
-      # runtime script を公開面として要求しない。
-      local dep member
-      for dep in agent-work-policy write-doc; do
-        local dep_root dep_entry
-        local -a members
-        dep_root=$(jq -r --arg d "$dep" '.deps[$d].root' "$fixture/$playbook-$runtime.json")
-        if [ "$dep" = write-doc ]; then
-          members=(playbook.yml)
-        else
-          members=(playbook.yml scripts/resolve.sh scripts/prepare.sh)
-        fi
-        for member in "${members[@]}"; do
-          [ -f "$dep_root/$member" ] || { echo "[validate] 公開面の入口が無い: $dep/$member" >&2; status=1; }
-        done
-        dep_entry=$(jq -r --arg d "$dep" '.deps[$d].entry' "$fixture/$playbook-$runtime.json")
-        [ -f "$dep_entry" ] || { echo "[validate] 公開playbook入口のSKILL.mdが無い: $dep" >&2; status=1; }
-      done
-    done
-  done
-  return "$status"
-}
-
-# 最上位規則（外部pluginの公開面はplaybook 1枚だけ）を、実配布物に対して機械的に確かめる。
-validate_external_dependency_rules() {
-  local fixture="$TMP_ROOT/external-rules"
-  local probe="$fixture/consumer/plugins/playbooks/probe/probe"
-  local status=0
-  mkdir -p "$probe/scripts" "$probe/.claude-plugin" "$probe/.codex-plugin" \
-           "$fixture/consumer/plugins/.claude-plugin" "$fixture/consumer/plugins/.codex-plugin" "$fixture/repo"
-  git -C "$fixture/repo" init -q
-  make_provider_dev_map "$fixture/dev-roots.json" || return 1
-  cp "$ROOT/shared/prepare.sh" "$probe/scripts/prepare.sh"
-  cp "$ROOT/shared/run-config.py" "$probe/scripts/run-config.py"
-  cp "$ROOT/shared/playbook/resolve.sh" "$probe/scripts/resolve.sh"
-  cp "$ROOT/shared/playbook/resolve-dependency.py" "$probe/scripts/resolve-dependency.py"
-  cp "$ROOT/shared/playbook/state.py" "$probe/scripts/state.py"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$probe/scripts/validate-config.sh"
-  chmod 755 "$probe/scripts"/*
-  printf -- '---\nname: probe\ndescription: fixture\n---\nfixture\n' > "$probe/SKILL.md"
-  local runtime
-  for runtime in claude codex; do
-    printf '%s\n' '{"name":"probe","version":"1.0.0","description":"fixture","skills":"./","metadata":{"harness":{"contractVersion":1}}}' \
-      > "$probe/.${runtime}-plugin/plugin.json"
-    printf '%s\n' '{"name":"probe","version":"1.0.0","description":"fixture","skills":["./playbooks/probe/probe"],"metadata":{"harness":{"installationSurface":"playbook-package","marketplace":"probe","entryRoot":"./playbooks/probe/probe","playbooks":{"probe":"./playbooks/probe/probe"},"internalPlugins":{},"contractVersion":1,"implements":[{"id":"probe/probe","version":1,"kind":"playbook","playbook":"probe"}]}}}' \
-      > "$fixture/consumer/plugins/.${runtime}-plugin/plugin.json"
-  done
-  probe_playbook() { # probe_playbook <step本体のYAML断片>
-    { printf '%s\n' 'version: 2' 'name: probe' 'description: fixture' 'instructions:' \
-        '  execution: {directive: fixture}' 'requires:' \
-        '  - {plugin: agent-work-policy, marketplace: agent-work-policy}' 'steps:' \
-        '  - id: delegate' '    purpose: fixture'
-      printf '%s\n' "$1"
-    } > "$probe/playbook.yml"
-  }
-  probe_reject() { # probe_reject <名前> <期待コード>
-    if XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
-       bash "$probe/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/$1.err"; then
-      echo "[validate] 規則違反を拒否できない: $1" >&2
-      status=1
-    elif ! rg -q "$2" "$fixture/$1.err"; then
-      echo "[validate] 規則違反を期待した理由で拒否できない: $1 ($(head -1 "$fixture/$1.err"))" >&2
-      status=1
-    fi
-  }
-  # (a) 適合形は通る。実配布物の公開playbookをplaybook: stepとして解決できる。
-  probe_playbook '    playbook: agent-work-policy
-    input: {action: commit}'
-  if ! XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
-       bash "$probe/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/ok.err"; then
-    echo "[validate] 適合形が通らない: $(head -3 "$fixture/ok.err")" >&2
-    status=1
-  fi
-  # (b) 外部依存の script は実行できない。
-  probe_playbook '    script: scripts/state.py
-    plugin: agent-work-policy'
-  probe_reject external-script 'external-dependency-script'
-  # (c) 外部依存の公開 skill を skill: で掴めない。
-  probe_playbook '    skill: work-with-policy'
-  probe_reject external-skill 'external-dependency-skill'
-  # (d) 外部 root から公開面以外の path を組み立てられない。
-  probe_playbook '    playbook: agent-work-policy
-    input: {action: commit}
-    arguments: ["${.deps[\"agent-work-policy\"].root}/scripts/state.py"]'
-  probe_reject external-path 'external-dependency-path'
-  # skill名で入口を指す形（`.skills.<名前>`）の拒否は、共通のhardening試験が持つ。
-  # ここへ literal を置くと消費側lintがこのfile自身を落とすので、重複させない。
-  # (e) 宣言されていない action は要求できない。
-  probe_playbook '    playbook: agent-work-policy
-    input: {action: rebase-everything}'
-  probe_reject unsupported-action 'binding-capability-unsupported'
-  # (f) read-only の照会は実配布物が宣言している。
-  probe_playbook '    playbook: agent-work-policy
-    input: {action: inspect}'
-  if ! XDG_CONFIG_HOME="$fixture/config" HARNESS_PLUGIN_DEV_ROOTS="$fixture/dev-roots.json" \
-       bash "$probe/scripts/resolve.sh" "$fixture/repo" >/dev/null 2> "$fixture/inspect.err"; then
-    echo "[validate] read-onlyの照会を要求できない: $(head -3 "$fixture/inspect.err")" >&2
-    status=1
-  fi
-  return "$status"
-}
-
-validate_manifest_identity_contract() {
-  local fixture="$TMP_ROOT/manifest-identity"
-  local source="$ROOT/plugins/skills/pull-request/pr-create"
-  local status=0
-  local version
-  version=$(jq -r '.version' "$source/.codex-plugin/plugin.json")
-  mkdir -p "$fixture"
-  cp "$source/.claude-plugin/plugin.json" "$fixture/claude.json"
-  cp "$source/.codex-plugin/plugin.json" "$fixture/codex.json"
-  jq -s -e --arg n pr-create --arg v "$version" '
-    length==2 and all(.[]; .name==$n and .version==$v)
-  ' "$fixture/claude.json" "$fixture/codex.json" >/dev/null || status=1
-  # D5c: Codex manifestだけが別versionなら、両runtimeのidentityは不一致である。
-  jq '.version="9.9.9"' "$fixture/codex.json" > "$fixture/codex-mutated.json"
-  if jq -s -e --arg n pr-create --arg v "$version" '
-    length==2 and all(.[]; .name==$n and .version==$v)
-  ' "$fixture/claude.json" "$fixture/codex-mutated.json" >/dev/null; then
-    status=1
-  fi
-  return "$status"
-}
-# package manifest：両runtimeが同一値で、所属marketplaceを自己宣言する。
-python3 - "$ROOT/plugins" <<'MANIFEST_PY' || failed=1
-import json, sys
-from pathlib import Path
-package = Path(sys.argv[1])
-data = {r: json.loads((package / f'.{r}-plugin/plugin.json').read_text()) for r in ('claude', 'codex')}
-harness = {r: d.get('metadata', {}).get('harness', {}) for r, d in data.items()}
-errors = []
-if harness['claude'] != harness['codex']:
-    errors.append('両runtimeのmetadata.harnessが一致しない')
-if data['claude'].get('skills') != data['codex'].get('skills'):
-    errors.append('両runtimeのskills宣言が一致しない')
-h = harness['claude']
-if h.get('marketplace') != 'pull-request':
-    errors.append('metadata.harness.marketplace が pull-request でない: %r' % h.get('marketplace'))
-if h.get('installationSurface') != 'playbook-package':
-    errors.append('installationSurface が playbook-package でない')
-if sorted(h.get('playbooks', {})) != ['pr-review-response', 'pull-request']:
-    errors.append('公開playbookの宣言が違う: %r' % sorted(h.get('playbooks', {})))
-if 'pull-request' in (h.get('internalPlugins') or {}):
-    errors.append('内部plugin名がmarketplace名と衝突している')
-for message in errors:
-    print('[validate] ' + message, file=sys.stderr)
-raise SystemExit(1 if errors else 0)
-MANIFEST_PY
-bash "$ROOT/scripts/validate-marketplace.sh" "$ROOT" || failed=1
-bash "$ROOT/scripts/test-marketplace-validation.sh" || failed=1
-while IFS= read -r pb; do
-  yq -o=json -I=0 '.' "$pb" | jq -e '.version==2 and (.requires|length>0) and all(.requires[]; type=="object" and ((keys|sort)==["marketplace","plugin"]))' >/dev/null || failed=1
-  yq -o=json -I=0 '.' "$pb" | jq -e 'all(.requires[]; .marketplace=="pull-request" or .plugin==.marketplace)' >/dev/null || failed=1
-  root=$(dirname "$pb")
-  cmp -s "$ROOT/shared/playbook/resolve.sh" "$root/scripts/resolve.sh" || failed=1
-  cmp -s "$ROOT/shared/playbook/resolve-dependency.py" "$root/scripts/resolve-dependency.py" || failed=1
-  cmp -s "$ROOT/shared/playbook/state.py" "$root/scripts/state.py" || failed=1
-done < <(find "$ROOT/plugins/playbooks" -name playbook.yml -type f 2>/dev/null | sort)
-# 配布物ごとの入口は、共有正本から逸脱させない。公開操作を委譲する
-# playbookも、単体配布時にはこの複製だけで設定解決できる必要がある。
-while IFS= read -r script; do
-  cmp -s "$ROOT/shared/prepare.sh" "$script" || failed=1
-done < <(find "$ROOT/plugins" -path '*/scripts/prepare.sh' -type f | sort)
-# 公開Git操作を行うplaybookは、Agent Work Policyを唯一の所有者として宣言する。
-for pb in \
-  "$ROOT/plugins/playbooks/pull-request/pull-request/playbook.yml" \
-  "$ROOT/plugins/playbooks/pull-request/pr-review-response/playbook.yml"; do
-  yq -o=json -I=0 '.requires' "$pb" | jq -e '
-    any(.[]; .plugin == "agent-work-policy" and .marketplace == "agent-work-policy")
-  ' >/dev/null || failed=1
 done
-while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.sh' | sort)
-while IFS= read -r script; do PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 -m py_compile "$script" || failed=1; done < <(find "$ROOT" -type f -name '*.py' | sort)
-validate_dependency_resolution_contract || failed=1
-validate_publication_delegation_contract || failed=1
-validate_real_distribution_resolution || failed=1
-validate_external_dependency_rules || failed=1
-validate_consumer_contract_lint || failed=1
-validate_manifest_identity_contract || failed=1
+claude_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACKAGE/.claude-plugin/plugin.json")
+codex_identity=$(jq -c '{name,version,skills,harness:.metadata.harness}' "$PACKAGE/.codex-plugin/plugin.json")
+[ "$claude_identity" = "$codex_identity" ] && pass "両runtime manifestのidentity一致" || fail "両runtime manifestのidentity一致"
+jq -e '.skills==["./skills/open-pull-request","./skills/respond-to-pr-review"]
+       and .metadata.harness=={"marketplace":"pull-request","contractVersion":1}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
+  && pass "公開入口2つ、playbooks / internalPlugins / implements 無し" || fail "manifestの公開宣言"
+manifest_dirs=$(find "$ROOT/plugins" -type d \( -name '.claude-plugin' -o -name '.codex-plugin' \) | sed "s#^$ROOT/##" | sort | tr '\n' ' ')
+[ "$manifest_dirs" = "plugins/pull-request/.claude-plugin plugins/pull-request/.codex-plugin " ] \
+  && pass "runtime manifest directoryはpackage rootの2つだけ" || fail "runtime manifest directoryが余分または欠落: $manifest_dirs"
+skill_dirs=$(find "$ENTRY_DIR" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | tr '\n' ' ')
+[ "$skill_dirs" = "open-pull-request respond-to-pr-review " ] && pass "skills/直下は公開入口2つだけ" || fail "skills/直下: $skill_dirs"
+[ "$(find "$ROOT/plugins" -name SKILL.md -type f | wc -l | tr -d ' ')" -eq 2 ] && pass "SKILL.mdは公開入口の2本だけ（内部skillなし）" || fail "SKILL.mdの本数"
+[ "$(find "$ROOT/plugins" -type l | wc -l | tr -d ' ')" -eq 0 ] && pass "配布物にsymlinkなし" || fail "配布物にsymlinkがある"
+
+# ── 公開入口ごとの構造 ─────────────────────────────────────────────────
+for entry in "${ENTRIES[@]}"; do
+  dir="$ENTRY_DIR/$entry"
+  name=$(awk 'NR==1 { if ($0 != "---") exit 2; next } $0=="---" { exit } { print }' "$dir/SKILL.md" | yq -r '.name')
+  [ "$name" = "$entry" ] && pass "$entry: SKILL frontmatter name" || fail "$entry: SKILL frontmatter name = $name"
+  pb=$(yq -o=json -I=0 '.' "$dir/playbook.yml")
+  jq -e --arg n "$entry" '.version==2 and .name==$n
+      and (.requires|map(.plugin)|sort)==["agent-work-policy","write-doc"] and all(.requires[]; .marketplace==.plugin)
+      and (.inputs|index("document_destination")) and ((.inputs|index("output_target"))|not)
+      and ((.steps|map(.id)|unique|length)==(.steps|length))
+      and all(.steps[]; ([has("agent_work"),has("script"),has("skill"),has("playbook")]|map(select(.))|length)==1)
+      and all(.steps[]|select(has("playbook")); .playbook=="agent-work-policy" or .playbook=="write-doc")
+      and all(.steps[]|select(has("playbook")); (has("input")|not) or ((.input|keys)==["document_type"]))
+      and ((.. | objects | has("output_to")) | not)
+      and ((.|has("permissions"))|not) and ((.|has("gates"))|not) and ((.|has("git"))|not) and ((.|has("verification"))|not) and ((.|has("conflict_report"))|not) and ((.|has("report"))|not)' <<<"$pb" >/dev/null \
+    && pass "$entry: playbook.yml identity・外部requires・工程種別・policy値の不在" || fail "$entry: playbook.yml"
+  scripts_ok=1
+  while IFS= read -r script; do [ -f "$dir/$script" ] || scripts_ok=0; done < <(jq -r '.steps[]|select(has("script")).script' <<<"$pb")
+  [ "$scripts_ok" -eq 1 ] && pass "$entry: steps.script は入口内の実在file" || fail "$entry: steps.script の参照先"
+  [ -f "$dir/assets/$entry.config.example.yml" ] && pass "$entry: 設定の記入例がある" || fail "$entry: 設定の記入例"
+  if rg -n --fixed-strings -e '${.' -e '<!-- BEGIN shared:' -e 'CLAUDE_PLUGIN_ROOT' -e 'BUNDLE_ROOT' "$dir/SKILL.md" "$dir/playbook.yml" "$dir/references" >/dev/null \
+    || rg -n 'prepare\.sh|resolve\.sh|run-config\.py|state\.py|work-with-policy|pr-conflict-inspect|pr-conflict-resolve|pr-create|pr-review-assess|pr-review-apply|pr-review-verify' "$dir/SKILL.md" "$dir/references" >/dev/null; then
+    fail "$entry: 禁止参照形・旧runtime・旧内部名が残っている"
+  else
+    pass "$entry: 禁止参照形・旧runtime・旧内部名が無い"
+  fi
+done
+# 公開Git操作の委譲: agent-work-policy へは公開入口名で呼び、消費側がpolicy値を持たない
+jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["workspace","push","create-pull-request","ready-for-review"]' <<<"$(yq -o=json -I=0 '.' "$ENTRY_DIR/open-pull-request/playbook.yml")" >/dev/null \
+  && pass "open-pull-request: 公開Git操作4件は agent-work-policy へ委譲" || fail "open-pull-request: 公開Git操作の委譲"
+# when が参照する設定値（conflict_report.timing）は read-policy 工程の provides から到達する
+jq -e '.steps[0].id=="read-policy" and .steps[0].script=="scripts/config.py" and (.steps[0].provides|index("conflict_report"))
+       and all(.steps[]|select(has("when") and (.when|test("conflict_report"))); (.needs|index("conflict_report")))' <<<"$(yq -o=json -I=0 '.' "$ENTRY_DIR/open-pull-request/playbook.yml")" >/dev/null \
+  && pass "open-pull-request: 設定値は read-policy の provides から when 参照工程へ到達" || fail "open-pull-request: 設定値の到達性"
+OPEN="$ENTRY_DIR/open-pull-request"
+open_repo="$TMP_ROOT/open-repo"; mkdir -p "$open_repo/.harness-plugins"
+cp "$OPEN/assets/open-pull-request.config.example.yml" "$open_repo/.harness-plugins/open-pull-request.config.yml"
+git -C "$open_repo" init -q -b main
+cfg_ok=1
+python3 "$OPEN/scripts/config.py" --repo "$open_repo" | jq -e '.conflict_report.timing=="before_resolution" and (.verification.commands|type)=="array"' >/dev/null || cfg_ok=0
+for edit in '.conflict_report.timing = "later"' '.extra = 1' 'del(.verification)' '.verification.commands = [""]'; do
+  cp "$OPEN/assets/open-pull-request.config.example.yml" "$open_repo/.harness-plugins/open-pull-request.config.yml"; yq -i "$edit" "$open_repo/.harness-plugins/open-pull-request.config.yml"
+  if python3 "$OPEN/scripts/config.py" --repo "$open_repo" >/dev/null 2>&1; then cfg_ok=0; echo "  受理してはならない設定: $edit"; fi
+done
+rm "$open_repo/.harness-plugins/open-pull-request.config.yml"
+if python3 "$OPEN/scripts/config.py" --repo "$open_repo" > "$TMP_ROOT/open-missing.json" 2>/dev/null; then cfg_ok=0; elif ! jq -e '.reason=="policy_missing"' "$TMP_ROOT/open-missing.json" >/dev/null; then cfg_ok=0; fi
+[ "$cfg_ok" -eq 1 ] && pass "config.py: 正例、timing 2値以外・未知key・欠落・空command・policy不在を拒否" || fail "config.py"
+jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["commit","push"] and (.steps[]|select(.id=="assessment-gate")|has("when")) and ((.steps[]|select(.id=="assess")).needs|index("review_import_allowed"))' <<<"$(yq -o=json -I=0 '.' "$ENTRY_DIR/respond-to-pr-review/playbook.yml")" >/dev/null \
+  && pass "respond-to-pr-review: commit / push は agent-work-policy へ委譲、accept 0件分岐とreview取込permissionの順序" || fail "respond-to-pr-review: 委譲と分岐"
+
+# 素の公開操作（git commit / push、gh pr create / merge）を配布物のshell / Pythonに置かない
+has_raw_publication_operation() {
+  rg -n --glob '*.sh' --glob '*.py' \
+    '\bgit[[:space:]]+(commit|push)\b|\bgh[[:space:]]+pr[[:space:]]+(create|merge)\b|["'"'']git["'"''][[:space:]]*,[[:space:]]*["'"''](commit|push)["'"'']|["'"'']gh["'"''][[:space:]]*,[[:space:]]*["'"'']pr["'"''][[:space:]]*,[[:space:]]*["'"''](create|merge)["'"'']' \
+    "$1" >/dev/null
+}
+if has_raw_publication_operation "$ROOT/plugins"; then fail "配布物に素の公開操作がある"; else pass "配布物に素の公開操作が無い"; fi
+mkdir -p "$TMP_ROOT/raw"
+printf '%s\n' 'git push origin branch' > "$TMP_ROOT/raw/raw.sh"
+printf '%s\n' 'subprocess.run(["gh", "pr", "create", "--fill"])' > "$TMP_ROOT/raw/m8b.py"
+has_raw_publication_operation "$TMP_ROOT/raw" && pass "self-test: 素の公開操作を検出できる" || fail "self-test: 素の公開操作の検出"
+
+# ── 構文 ────────────────────────────────────────────────────────────────
+while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROOT/scripts" "$ROOT/tests" "$PACKAGE" -type f -name '*.sh' | sort)
+while IFS= read -r script; do python3 -m py_compile "$script" || failed=1; done < <(find "$PACKAGE" -type f -name '*.py' | sort)
+
+# ── 決定論的toolの契約 ────────────────────────────────────────────────
+python3 -m unittest discover -s "$ROOT/tests" -p test_verification_cli.py >/dev/null 2>&1 && pass "verify.sh のJSON出力と失敗停止" || fail "tests/test_verification_cli.py"
+
+REVIEW="$ENTRY_DIR/respond-to-pr-review"
+repo="$TMP_ROOT/repo"; mkdir -p "$repo/.harness-plugins"
+cfg="$repo/.harness-plugins/respond-to-pr-review.config.yml"
+cp "$REVIEW/assets/respond-to-pr-review.config.example.yml" "$cfg"
+git -C "$repo" init -q -b main; printf 'a\n' > "$repo/a.txt"; git -C "$repo" add a.txt .harness-plugins; git -C "$repo" -c user.email=t@example.invalid -c user.name=t commit -qm init
+gate_ok=1
+python3 "$REVIEW/scripts/review-gate.py" preflight --config "$cfg" --repo "$repo" | jq -e '.status=="ready"' >/dev/null || gate_ok=0
+python3 "$REVIEW/scripts/review-gate.py" permission --config "$cfg" --name review_import | jq -e '.allowed==true' >/dev/null || gate_ok=0
+if python3 "$REVIEW/scripts/review-gate.py" gate --config "$cfg" --name after_assessment >/dev/null 2>&1; then gate_ok=0; fi
+python3 "$REVIEW/scripts/review-gate.py" gate --config "$cfg" --name after_assessment --approved | jq -e '.status=="approved"' >/dev/null || gate_ok=0
+printf 'dirty\n' > "$repo/b.txt"
+if python3 "$REVIEW/scripts/review-gate.py" preflight --config "$cfg" --repo "$repo" >/dev/null 2>&1; then gate_ok=0; fi
+rm "$repo/b.txt"
+[ "$gate_ok" -eq 1 ] && pass "review-gate.py: preflight / permission / gate の正例と承認待ち・dirty開始" || fail "review-gate.py の正例"
+reject_ok=1
+if python3 "$REVIEW/scripts/review-gate.py" permission --config "$repo/.harness-plugins/missing.yml" --name modify >/dev/null 2>&1; then reject_ok=0; fi
+for edit in '.permissions.commit = true' '.gates.before_push = true' 'del(.git)' '.report.timing = "later"' '.verification.commands = [""]' '.extra = 1'; do
+  cp "$REVIEW/assets/respond-to-pr-review.config.example.yml" "$cfg"; yq -i "$edit" "$cfg"
+  if python3 "$REVIEW/scripts/review-gate.py" permission --config "$cfg" --name modify >/dev/null 2>&1; then reject_ok=0; echo "  受理してはならない設定: $edit"; fi
+done
+cp "$REVIEW/assets/respond-to-pr-review.config.example.yml" "$cfg"
+other="$TMP_ROOT/other"; mkdir -p "$other"; git -C "$other" init -q -b main
+if python3 "$REVIEW/scripts/review-gate.py" preflight --config "$cfg" --repo "$other" >/dev/null 2>&1; then reject_ok=0; fi
+[ "$reject_ok" -eq 1 ] && pass "review-gate.py: policy不在・公開操作permission/gateの混入・schema違反・別repository設定を拒否" || fail "review-gate.py の反例"
+
+OPEN="$ENTRY_DIR/open-pull-request"
+gate_sh_ok=1
+python3 - "$OPEN/scripts/gate.sh" <<'PY' || gate_sh_ok=0
+import json, subprocess, sys
+script = sys.argv[1]
+waiting = subprocess.run(["bash", script, "--report-ref", "/tmp/report.md"], capture_output=True, text=True)
+assert waiting.returncode == 3 and json.loads(waiting.stdout)["status"] == "waiting_for_human"
+approved = subprocess.run(["bash", script, "--report-ref", "/tmp/report.md", "--approved"], capture_output=True, text=True)
+assert approved.returncode == 0 and json.loads(approved.stdout)["status"] == "approved"
+invalid = subprocess.run(["bash", script, "--approved"], capture_output=True, text=True)
+assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid"
+PY
+[ "$gate_sh_ok" -eq 1 ] && pass "gate.sh: 承認待ち / 承認済み / 引数不備" || fail "gate.sh"
+open_cfg_ok=1
+for edit in '' '.conflict_report.timing = "after_resolution"'; do
+  yq -o=json -I=0 '.' "$OPEN/assets/open-pull-request.config.example.yml" | jq -e "${edit:-.} | .version==1 and (.conflict_report.timing==\"before_resolution\" or .conflict_report.timing==\"after_resolution\") and (.verification.commands|type)==\"array\" and (keys|sort)==[\"conflict_report\",\"verification\",\"version\"]" >/dev/null || open_cfg_ok=0
+done
+yq -o=json -I=0 '.' "$OPEN/assets/open-pull-request.config.example.yml" | jq -e '.conflict_report.timing="later" | .conflict_report.timing=="before_resolution" or .conflict_report.timing=="after_resolution"' >/dev/null && open_cfg_ok=0
+[ "$open_cfg_ok" -eq 1 ] && pass "open-pull-request 設定の記入例が schema（timing 2値、commands 配列、key集合）に合う" || fail "open-pull-request 設定の記入例"
+
+# ── 消費側の契約lint（G2同期後の共有版）: 外部依存の内部名を消費側の文書・script・設定へ書いていない ──
+# 検出語は兄弟checkoutの実配布物（provider package root）から作る。兄弟が無ければ緑にせず失敗させる。
+lint_consumer_contract() {
+  local map="$TMP_ROOT/lint-dev-map.json" status=0 runtime
+  local grill="$ROOT/../grill-plugins/plugins/grill" write_doc="$ROOT/../write-doc-plugins/plugins/write-doc" awp="$ROOT/../agent-work-policy-plugins/plugins/agent-work-policy"
+  for provider in "$grill" "$write_doc" "$awp"; do
+    [ -d "$provider" ] || { echo "[error] 依存先の配布物checkoutが無い: $provider" >&2; return 1; }
+  done
+  jq -n --arg g "$(cd "$grill" && pwd -P)" --arg w "$(cd "$write_doc" && pwd -P)" --arg a "$(cd "$awp" && pwd -P)" \
+    '{schema:1,dependencies:{"grill/grill":$g,"write-doc/write-doc":$w,"agent-work-policy/agent-work-policy":$a}}' > "$map" || return 1
+  for runtime in claude codex; do
+    HARNESS_PLUGIN_DEV_ROOTS="$map" python3 "$ROOT/scripts/lint-consumer-contract.py" --repo "$ROOT" --runtime "$runtime" || status=1
+  done
+  return "$status"
+}
+lint_consumer_contract && pass "消費側契約lint（両runtime。依存先の内部名を書いていない）" || fail "消費側契約lint"
+
 if [ "$failed" -eq 0 ]; then echo 'Validation: passed'; else echo 'Validation: failed'; fi
 [ "$failed" -eq 0 ]

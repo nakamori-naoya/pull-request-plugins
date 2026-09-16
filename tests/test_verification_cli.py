@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/skills/pull-request/pr-review-verify/scripts/verify.sh'
+SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/pull-request/skills/respond-to-pr-review/scripts/verify.sh'
 
 
 class VerificationCLI(unittest.TestCase):

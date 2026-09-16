@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "pull-request",
-      "source": "./plugins",
+      "source": "./plugins/pull-request",
       "description": "競合解消、PR作成、review responseのPlaybookを一括提供する",
       "version": "3.0.3"
     }

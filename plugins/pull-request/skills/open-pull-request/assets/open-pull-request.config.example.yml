@@ -1,0 +1,9 @@
+# open-pull-request のrepository設定の記入例。<repo>/.harness-plugins/open-pull-request.config.yml へ全keyを書いて置く。
+# 同梱既定へのfallbackは無く、この例が既定値として読まれることもない。
+# conflict_report.timing: 競合資料を解消前の提案（before_resolution）と解消後の実績（after_resolution）のどちらで作るか。
+# verification.commands: 競合解消後、PR作成前にすべて成功させるcommand。
+version: 1
+conflict_report:
+  timing: before_resolution
+verification:
+  commands: ["git diff --check"]

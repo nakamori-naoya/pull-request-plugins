@@ -1,6 +1,6 @@
 # Pull Request
 
-Pull Requestの競合調査・解消・作成と、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。
+Pull Requestの競合調査・解消・作成と、reviewの評価・修正・検証・公開を扱うClaude Code/Codex両対応marketplaceである。公開するインストール対象はpackage `pull-request`（`./plugins/pull-request`）1件で、公開入口は自己完結skill `open-pull-request` と `respond-to-pr-review` の2つである。
 
 ## こんなときに使う
 
@@ -14,12 +14,14 @@ Pull Requestの競合調査・解消・作成と、reviewの評価・修正・�
 
 ## 公開入口を選ぶ
 
-次の入口から依頼します。内部のスキルや処理は、入口が必要に応じて呼び出します。
+次の入口から依頼します。各入口は `SKILL.md`、隣接 `playbook.yml`、`references/`、`scripts/`、`assets/` だけで完結し、内部skillを持ちません。
 
-| やりたいこと | 公開入口 |
-|---|---|
-| 競合調査・必要な解消・PR作成を一続きで行う | `open-pull-request` |
-| 評価から修正、検証、公開まで一続きで行う | `respond-to-pr-review` |
+| やりたいこと | 公開入口 | repository設定 |
+|---|---|---|
+| 競合調査・必要な解消・PR作成を一続きで行う | `open-pull-request` | `<repo>/.harness-plugins/open-pull-request.config.yml` |
+| 評価から修正、検証、公開まで一続きで行う | `respond-to-pr-review` | `<repo>/.harness-plugins/respond-to-pr-review.config.yml` |
+
+設定fileは1層で必須であり、同梱既定へのfallbackは無い。各入口の `assets/<入口>.config.example.yml` を写して全keyを書く。公開Git操作（push、PR作成、commit）のpolicyは `agent-work-policy` の設定（`<repo>/.harness-plugins/agent-work-policy.config.yml`）が持ち、この2つの設定fileへは書けない。
 
 ## 利用例
 
@@ -111,25 +113,7 @@ marketplaceの取得と、インストール済みパッケージの更新は分
 - `write-doc@write-doc`
 - `agent-work-policy@agent-work-policy`
 
-別repositoryへの依存は公開playbook packageの`plugin@marketplace`だけを宣言し、内部機能名へ依存しない。versionは固定せず、解決したmanifestのidentity、契約版、公開playbook、必要なactionまたは文書型の宣言を検査する。
-
-外部playbookには公開契約の入力objectを直接渡し、同じ呼び出しが返す結果objectを直接読む。`agent-work-policy`は契約ID・版・対象repository・1つのactionとそのaction固有値だけを受け取る。`write-doc` v2は型付き`material`と、新規作成の`output_directory`+`name`または更新の`update_target`を排他的に受け取る。入力YAML、中間YAML、依存先root、内部script、結果受取用ファイルは扱わない。
-
-## 設定の上書きと優先順位
-
-設定を持つpluginは、優先順位が最も高い1ファイルだけを選ぶ。複数層をマージしないため、上書きするYAMLには同梱設定と同じ必須項目をすべて含める。必須項目の不足、未知のキー、許可されていない値があれば実行を停止する。
-
-skillの静的設定は、上から順に優先する。
-
-1. scope: `<scope>/<plugin-name>.config.yml`。呼び出し元がscopeを渡した実行だけで使う
-2. local: `<repo>/.harness-plugins/<plugin-name>.local.yml`。端末固有で、通常はcommitしない
-3. repository: `<repo>/.harness-plugins/<plugin-name>.config.yml`
-4. personal: `$XDG_CONFIG_HOME/harness-plugins/<plugin-name>.config.yml`（未設定時は `~/.config/harness-plugins/<plugin-name>.config.yml`）
-5. bundled defaults: plugin同梱の既定設定
-
-playbookの静的設定は、scope、repository、personal、同梱 `playbook.yml` の順で優先する。playbookにはlocal層がない。入口playbook自身は通常のrepository設定を使い、下段のpluginへscopeを渡す。単体呼び出しではscopeを読まない。
-
-skillでは、同梱設定の `prompt_parameters` に宣言されたpathだけ、依頼で明示された値を `--override=<path>=<value>` として最終上書きできる。宣言されていないpathを任意に上書きすることはできない。
+別repositoryへの依存は各入口の `playbook.yml` の `requires` に `{plugin, marketplace}` で宣言し、`playbook:` の工程として呼ぶ。versionは固定しない。外部playbookには公開契約の入力objectを直接渡し、同じ呼び出しが返す結果objectを直接読む。`agent-work-policy` は契約ID・版・対象repository・1つのactionとそのaction固有値だけを受け取る。`write-doc` v2は型付き `material` と、新規作成の `output_directory` + `name` または更新の `update_target` を排他的に受け取る。入力YAML、中間YAML、依存先root、内部script、結果受取用fileは扱わない。
 
 ## 検証
 
@@ -137,10 +121,14 @@ skillでは、同梱設定の `prompt_parameters` に宣言されたpathだけ�
 bash scripts/validate.sh
 ```
 
-## 実行契約の検証と配布
+## 保守tool
 
-`bash scripts/validate.sh` は配布構造、公開依存の宣言、actionごとの直接object、gate分岐、不正入力を検査する。外部APIや実Git公開操作は行わず、temp repositoryとstub providerで正常・失敗経路を確認する。構造検査の成功は競合解消やreview判断の意味品質を保証しないため、公開入口から必読資料を読み、変更意図と根拠を別に評価する。
+`scripts/doctor.py`、`scripts/lint-consumer-contract.py`、`scripts/evaluate-skills.py`、`scripts/release.py`、`scripts/sync-runtime.py`、`scripts/test-hardening.py`、`scripts/validate-distribution.py` と `shared/` は、Product Planning repositoryの `shared/runtime-source` を正本とする保守用の複製である。実行時に別repositoryや生成CLIは不要である。
 
-### 破壊的変更と移行
+## 配置と設定の変更（2026-09-16）
 
-公開入口は`open-pull-request`と`respond-to-pr-review`である。旧内部入口や外部providerの設定解決へ戻す互換経路は置かない。
+- marketplaceの `source` を `./plugins` から `./plugins/pull-request` へ、公開入口を `plugins/pull-request/skills/{open-pull-request, respond-to-pr-review}` へ移した。隣接 `playbook.yml` の `name` は入口名と同じになった。配置変更はinstall identityを変えるため、release時にmajor bumpが要る。
+- 内部skill `pr-conflict-inspect` / `pr-conflict-resolve` / `pr-create` は `open-pull-request` へ、`pr-review-assess` / `pr-review-apply` / `pr-review-verify` は `respond-to-pr-review` へ統合した。判断規律の参照文書と決定論的tool（`assessment.py` / `brief.py` / `verify.sh` / `review-gate.py` / `gate.sh`）は入口へ移した。
+- repositoryごとの方針（`conflict_report.timing` / `verification.commands`、`report` / `permissions` / `gates` / `verification` / `git`）は `playbook.yml` から `<repo>/.harness-plugins/<入口>.config.yml` へ移し、1層・必須にした。`review-gate.py` が schema を検査し、公開Git操作のpermissionやgateの混入を拒否する。
+- 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `validate-config.sh`）、4層の設定探索、入口ごとのnested manifest、`dependencies.yml` による束縛の実行時解決を撤去した。
+- `agent-work-policy` の呼び名は `agent-work-policy:work-with-policy` から `agent-work-policy:agent-work-policy` になった。
