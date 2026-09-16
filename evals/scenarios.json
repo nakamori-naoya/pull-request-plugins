@@ -3,7 +3,7 @@
   "cases": [
     {
       "id": "pull-request-plugins-contract",
-      "skill": "../plugins/skills/pull-request/pr-review-verify/SKILL.md",
+      "skill": "../plugins/pull-request/skills/respond-to-pr-review/SKILL.md",
       "messages": [
         {
           "role": "user",

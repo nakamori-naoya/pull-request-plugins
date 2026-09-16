@@ -8,7 +8,7 @@
       "name": "pull-request",
       "source": {
         "source": "local",
-        "path": "./plugins"
+        "path": "./plugins/pull-request"
       },
       "policy": {
         "installation": "AVAILABLE",
