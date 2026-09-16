@@ -1,0 +1,23 @@
+# respond-to-pr-review のrepository設定の記入例。<repo>/.harness-plugins/respond-to-pr-review.config.yml へ全keyを書いて置く。
+# 同梱既定へのfallbackは無く、この例が既定値として読まれることもない。
+# report: 評価過程を資料化するか。timingは資料を挟む位置（after_assessment / before_commit / before_push / after_push）。
+# permissions: review取込と修正だけをこの入口が判断する。公開Git操作の許可は agent-work-policy が判断する。
+# gates: review判断と修正だけをこの入口が扱う。commit / pushのgateは agent-work-policy が判定する。
+# verification.commands: 修正後にすべて成功させるcommand。
+# git: review取込の開始時clean必須か、作成するcommit message。
+version: 1
+report:
+  enabled: false
+  timing: before_commit
+permissions:
+  review_import: true
+  modify: true
+gates:
+  after_assessment: true
+  before_modify: true
+  after_modify: true
+verification:
+  commands: ["git diff --check"]
+git:
+  require_clean_start: true
+  commit_message: Address accepted PR review feedback
