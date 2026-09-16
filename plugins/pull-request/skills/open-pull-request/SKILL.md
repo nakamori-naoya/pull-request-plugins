@@ -42,11 +42,21 @@ description: Gitの作業branchとbase branchの競合を検出し、現行実�
 
 ## 停止条件
 
-- 設定fileが無い、または schema に合わない。`config.py` の診断を報告して止まる。
-- `agent-work-policy` が `failed` を返した（`permission_denied` / `policy_missing` / `invalid_input` / 操作失敗）。`reason` を報告して止まる。
-- `write-doc` が `failed` を返した。`reason` を報告し、gate・解消・公開操作へ進まない。
-- 調査時のSHAまたは競合集合が変わった。再調査へ戻る。
-- 検証commandが1件でも失敗した。PR本文の組み立てへ進まない。
+止まるのは次の場合である。理由を報告し、未実行の公開操作を実行済みとして扱わない。
+
+- 設定fileが無い、または schema に合わない（`config.py` が `2`）。
+- `agent-work-policy` が `failed` を返した（`permission_denied` / `policy_missing` / `invalid_input` / 操作失敗）。`permission_denied` は承認質問へ変えない。
+- `write-doc` が `failed` を返した。gate・解消・公開操作へ進まない。
+- 検証commandが1件でも失敗した。PR本文の組み立てへ進まず、再現commandと残る問題を返す。
+- 無関係な未commit変更、別の進行中merge、base不明、必要な操作権限不足がある状態で競合解消を求められた。
+- 人間gate（`gate.sh` の `waiting_for_human`、`agent-work-policy` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ先へ進まない。
+
+次は止まらず、根拠を明示して進む。
+
+- 調査時のSHAまたは競合集合が変わった。再調査へ戻り、変わった範囲を記録して続ける。
+- 過去PRやissueを取得できず、両側の目的が一部しか復元できない。取得できない範囲と代わりに確認した履歴を明記し、復元できた目的から解消方針を仮説として立てて資料と報告に書く。
+- 開いているPRが `null`。「無いか、確認できなかった」として自分で重複を確認し、結果を報告に書く。
+- 競合が無い。資料化・gate・解消を飛ばし、比較したrefと検出方法を報告に残す。
 
 ## 出力
 
