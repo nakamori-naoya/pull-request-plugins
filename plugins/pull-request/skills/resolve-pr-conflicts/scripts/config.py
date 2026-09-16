@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
-"""open-pull-request のrepository設定を読む決定論的tool。
+"""resolve-pr-conflicts のrepository設定を読む決定論的tool。
 
   config.py check --repo <repository_path>
   config.py read  --repo <repository_path>
 
-設定fileのpathは引数で受けず、<repository のgit root>/.harness-plugins/open-pull-request.config.yml に固定する（1層・fallback無し）。
+設定fileのpathは引数で受けず、<repository のgit root>/.harness-plugins/resolve-pr-conflicts.config.yml に固定する（1層・fallback無し）。
 stdinは使わない。出力は標準出力のJSON 1文書。
   check: schema検査だけ。exit 0、{"status": "ok", "config": <絶対path>}
   read : schema検査後、exit 0、{"config": <絶対path>, "values": {<設定fileのtop-level keyと値をそのまま>}}
   失敗 : exit 2、{"error": <診断>, "config": <絶対path または null>, "reason": "policy_missing" | "schema_violation" | "not_a_git_repository"}
-schema: version: 1、verification.commands（空でない文字列の配列）。keyの過不足、型違い、許容外の値は schema_violation。
+schema: version: 1、conflict_report.timing（before_resolution | after_resolution）、verification.commands（空でない文字列の配列）。keyの過不足、型違い、許容外の値は schema_violation。
 """
 import argparse
 import json
 import subprocess
 from pathlib import Path
 
-ENTRY = "open-pull-request"
-TOP_LEVEL = {"version", "verification"}
+ENTRY = "resolve-pr-conflicts"
+TOP_LEVEL = {"version", "conflict_report", "verification"}
+TIMINGS = ("before_resolution", "after_resolution")
 
 
 def fail(error, config, reason):
@@ -27,9 +28,12 @@ def fail(error, config, reason):
 
 def validate(cfg, path):
     if not isinstance(cfg, dict) or set(cfg) != TOP_LEVEL:
-        fail("設定のtop-level keyがschemaと一致しない（version / verification）", path, "schema_violation")
+        fail("設定のtop-level keyがschemaと一致しない（version / conflict_report / verification）", path, "schema_violation")
     if type(cfg["version"]) is not int or cfg["version"] != 1:
         fail("versionは1だけを受け付ける", path, "schema_violation")
+    report = cfg["conflict_report"]
+    if not isinstance(report, dict) or set(report) != {"timing"} or report["timing"] not in TIMINGS:
+        fail("conflict_report は timing（{}）だけを持つ".format(" / ".join(TIMINGS)), path, "schema_violation")
     verification = cfg["verification"]
     if (not isinstance(verification, dict) or set(verification) != {"commands"} or not isinstance(verification["commands"], list)
             or any(not isinstance(c, str) or not c for c in verification["commands"])):
