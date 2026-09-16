@@ -43,12 +43,21 @@ PR review commentをsourceの不変条件と変更意図に照らして採否を
 
 ## 停止条件
 
-- 設定fileが無い、schema に合わない、別repositoryの設定である。診断を報告して止まる。
-- 開始時にworking treeが汚れている（`require_clean_start: true`）。止まる。
-- `review_import` または `modify` が禁止。取得または修正の前に止まり、承認質問へ変えない。
-- gateで承認待ち。承認対象を提示して待つ。
+止まるのは次の場合である。診断または `reason` を報告し、未承認・未実行を成功扱いにしない。
+
+- 設定fileが無い、schema に合わない、別repositoryの設定である。
+- 開始時にworking treeが汚れている（`require_clean_start: true`）。
+- `review_import` または `modify` が禁止（permission）。取得または修正の前に止まり、承認質問へ変えない。
+- GitHub MCPが使えず、PRのreviewを取得できない。
+- gateで承認待ち。承認対象を提示して待ち、承認が無ければ先へ進まない。
 - 検証commandが失敗した。commitしない。
-- `agent-work-policy` または `write-doc` が `failed` を返した。`reason` を報告して止まる。
+- `agent-work-policy` または `write-doc` が `failed` を返した。
+
+次は止まらず、根拠を明示して進む。
+
+- commentの採否が仕様・権限・外部状態の不足で決められない。`defer` にして何が分かれば決められるかを書き、`reject` へ丸めない。
+- review comment が0件、または `accept` が0件。変更・gate・公開操作へ進まず、根拠を報告して終える。
+- `document_destination` が未使用（report無効、timing不一致、採用0件）。質問も検査もせず進む。
 
 ## 出力
 
