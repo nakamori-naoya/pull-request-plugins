@@ -1,8 +1,8 @@
-> 作業を始める前に、workspace正本入口 `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md` を読み、そこから指定される共通規約とこのrepository固有の規則を適用する。
+> 作業を始める前に、workspace規約入口 `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md` を読み、そこから指定される共通規約とこのrepository固有の規則を適用する。
 
 # AGENTS.md
 
-このrepositoryはPull Requestの作成、競合の調査・解消、review responseを扱うmarketplaceである。marketplaceへ公開するインストール対象はpackage `pull-request`（`./plugins/pull-request`）だけにし、公開入口は `skills/open-pull-request`（平時: 検証済みbranchからPRを作る）、`skills/resolve-pr-conflicts`（例外: 競合を調査・資料化・gate・解消・検証する）、`skills/respond-to-pr-review` の3つとする。内部skillは置かない。各入口は自身の `SKILL.md`、隣接 `playbook.yml`、`references/`、`scripts/`、`assets/` だけで完結し、工程順は `playbook.yml` の宣言順が正本で同じagentが辿る。`open-pull-request` は競合を検出したときだけ `resolve-pr-conflicts` を `steps[].skill` で1工程として呼ぶ（同package内の内部契約）。
+このrepositoryはPull Requestの作成、競合の調査・解消、review responseを扱うmarketplaceである。marketplaceへ公開するインストール対象はpackage `pull-request`（`./plugins/pull-request`）だけにし、公開入口は `skills/open-pull-request`（平時: 検証済みbranchからPRを作る）、`skills/resolve-pr-conflicts`（例外: 競合を調査・資料化・gate・解消・検証する）、`skills/respond-to-pr-review` の3つとする。内部skillは置かない。各入口は自身の `SKILL.md`、隣接 `playbook.yml`、`references/`、`scripts/`、`assets/` だけで完結し、工程順は `playbook.yml` の宣言順が基準資料で同じagentが辿る。`open-pull-request` は競合を検出したときだけ `resolve-pr-conflicts` を `steps[].skill` で1工程として呼ぶ（同package内の内部契約）。
 
 別repositoryへは、そのrepositoryが公開するpackageだけで依存し、`playbook.yml` の `requires` に `{plugin, marketplace}` で宣言して `playbook:` の工程でだけ呼ぶ。`skill:` や `script:` で指さない。外部packageへは公開契約の入力objectを直接渡し、同じ呼び出しが返す公開結果objectだけを使う。`agent-work-policy` には契約ID・版・対象repository・1つのactionとそのaction固有値を持つ完全なobjectを直接渡す。`write-doc` 契約v2にはobject配列の素材と排他的な保存先を直接渡す。1回の委譲で頼む操作は1つだけにする。
 

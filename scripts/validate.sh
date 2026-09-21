@@ -17,7 +17,7 @@ fail() { printf 'FAIL: %s\n' "$1"; failed=1; }
 PACKAGE="$ROOT/plugins/pull-request"
 ENTRY_DIR="$PACKAGE/skills"
 
-# ── 保守tool（正本は兄弟checkout harness-tools だけ。複製を持たず、無ければ止まる。fixtureで代用しない） ──
+# ── 保守tool（基準資料は兄弟checkout harness-tools だけ。複製を持たず、無ければ止まる。fixtureで代用しない） ──
 TOOLS="$ROOT/../harness-tools/tools"
 [ -d "$TOOLS" ] || { echo "[error] 兄弟 checkout harness-tools が無い: $TOOLS" >&2; exit 2; }
 python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" && pass "root契約（配置・manifest・隣接playbook.yml・禁止参照形）" || fail "root契約"
@@ -83,7 +83,7 @@ for entry in "${ENTRIES[@]}"; do
 done
 
 # ── 平時（open-pull-request）と例外（resolve-pr-conflicts）の分離 ─────────
-# 正本: 各入口の隣接 playbook.yml と manifest の skills（同package の公開入口の集合）
+# 基準資料: 各入口の隣接 playbook.yml と manifest の skills（同package の公開入口の集合）
 # 入力: skills/open-pull-request/playbook.yml、skills/resolve-pr-conflicts/playbook.yml、skills/respond-to-pr-review/playbook.yml
 # 正規化: yq v4 で JSON 化し、steps を宣言順の list、requires を plugin 名の集合として読む
 # 合格述語: open-pull-request は agent-work-policy だけを requires し、steps の id 列が平時フローの順（read-policy → workspace → detect-conflicts →
@@ -124,9 +124,9 @@ jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["commit","push"] 
        and (.steps[0].provides|index("report"))
        and all(.steps[]|select(has("when") and (.when|test("report\\."))); (.needs|index("report")))' <<<"$review_pb" >/dev/null \
   && pass "respond-to-pr-review: commit / push は agent-work-policy へ委譲、accept 0件分岐とreview取込permissionの順序、設定値 report は read-policy の provides から when 参照工程へ到達" || fail "respond-to-pr-review: 委譲と分岐"
-# gate.sh の複製一致 — 正本: open-pull-request/scripts/gate.sh。入力: resolve-pr-conflicts/scripts/gate.sh。正規化: byte 列。合格述語: cmp が一致。
+# gate.sh の複製一致 — 基準資料: open-pull-request/scripts/gate.sh。入力: resolve-pr-conflicts/scripts/gate.sh。正規化: byte 列。合格述語: cmp が一致。
 # 失敗時の診断: 2 入口の path。正例: 現行。反例: 片方だけ編集。境界例: 改行 code の差も不合格。意味評価として残す範囲: gate の意味（何を承認するか）
-cmp -s "$OPEN/scripts/gate.sh" "$RESOLVE/scripts/gate.sh" && pass "gate.sh は2入口でbyte一致（同じ正本の複製）" || fail "gate.sh が2入口で異なる"
+cmp -s "$OPEN/scripts/gate.sh" "$RESOLVE/scripts/gate.sh" && pass "gate.sh は2入口でbyte一致（同じ基準資料の複製）" || fail "gate.sh が2入口で異なる"
 
 # 素の公開操作（git commit / push、gh pr create / merge）を配布物のshell / Pythonに置かない
 has_raw_publication_operation() {
@@ -145,7 +145,7 @@ while IFS= read -r script; do bash -n "$script" || failed=1; done < <(find "$ROO
 while IFS= read -r script; do python3 -m py_compile "$script" || failed=1; done < <(find "$PACKAGE" -type f -name '*.py' | sort)
 
 # ── config.py check|read の共通契約（3入口） ─────────────────────────────
-# 正本: 各入口の assets/<入口>.config.example.yml と、各 SKILL.md 手順 1 が定める config.py の契約（M-05 / M-16）
+# 基準資料: 各入口の assets/<入口>.config.example.yml と、各 SKILL.md 手順 1 が定める config.py の契約（M-05 / M-16）
 # 入力: 一時 git repository の .harness-plugins/<入口>.config.yml（記入例を写し、yq で 1 点だけ変えた複製）、git repository でない一時 directory
 # 正規化: stdout を JSON 1 文書として jq で読み、終了 code と組で見る。stdin は /dev/null
 # 合格述語: check は exit 0 と {"status":"ok","config":<固定 path>}、read は exit 0 と {"config":<固定 path>,"values":{version:1, verification.commands: 配列, …}}。

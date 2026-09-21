@@ -1,5 +1,5 @@
 # open-pull-request — 検証済みbranchからPull Requestを作成する平時の流れ。競合は例外で、検出したときだけ resolve-pr-conflicts を呼ぶ。
-# 工程順はこのYAMLが正本で、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
+# 工程順はこのYAMLの宣言を正式な定義とするで、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
 # repositoryごとの方針（verification.commands）は <repo>/.harness-plugins/open-pull-request.config.yml が持つ。
 # 公開Git操作の方針・permission・human gateは agent-work-policy の公開契約が所有する。
 version: 2
