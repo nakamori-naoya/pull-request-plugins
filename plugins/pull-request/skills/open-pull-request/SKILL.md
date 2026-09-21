@@ -17,7 +17,7 @@ description: Gitの作業branchから、repository設定の検証commandを通�
 
 プロジェクト固有の規約（置き場、命名、追加で従う資料）は、対象repositoryのAGENTS.md / CLAUDE.mdと`references`で渡される。この入口は既定値を持たず、指示文へ展開もしない。
 
-同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正本にする。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的なtool、`skill:` は同じpackageの公開入口の適用、`playbook:` は外部公開playbookの直接呼び出しである。`when` は実行時成果で判定し、`conditional_needs` は同じ条件のときだけ増える開始条件である。
+同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正式な定義として扱う。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的なtool、`skill:` は同じpackageの公開入口の適用、`playbook:` は外部公開playbookの直接呼び出しである。`when` は実行時成果で判定し、`conditional_needs` は同じ条件のときだけ増える開始条件である。
 
 ## 判断基準
 
