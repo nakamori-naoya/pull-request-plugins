@@ -126,3 +126,7 @@ bash scripts/validate.sh
 ## 保守tool
 
 保守tool（root validator `validate-plugin-repository.py`、`doctor.py`、`lint-consumer-contract.py`、`test-hardening.py`、`release.py`、eval runner）の基準資料は兄弟checkout `../harness-tools/` だけである。このrepositoryは複製も同期機構も持たず、`scripts/validate.sh` は `../harness-tools/tools/` が無ければ止まる。消費側契約lintは依存providerの実配布物（`../grill-plugins` / `../write-doc-plugins` / `../agent-work-policy-plugins`）も要る。CIは `.github/workflows/validate.yml` で `harness-tools` と依存providerを兄弟checkoutし、`harness-tools/ci/validate.sh` で local と同じcommandを実行する。実行時（skillの利用時）に別repositoryや生成CLIは不要である。
+
+## このpackageが持つ判断
+
+`pull-request` は、PRを作る流れ、競合の意図を復元して意味を保って解く方法、review commentの採否の判断を持つ。この package 自身の人の確認（レビュー受付、解消前の提案、評価と修正の前後）もここで扱い、承認範囲の形と組み立ててよい者は `agent-work-policy` の公開契約に従う。公開Git操作のpermission、gate、merge方式とbaseへの追従の関係は持たず、`agent-work-policy` に従う。
