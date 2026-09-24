@@ -30,7 +30,7 @@ REVIEW="$ENTRY_DIR/respond-to-pr-review"
 
 # ── 配置と identity ──────────────────────────────────────────────────────
 for market in .claude-plugin/marketplace.json .agents/plugins/marketplace.json; do
-  if jq -e '.name=="pull-request" and (.plugins|length)==1 and .plugins[0].name=="pull-request" and .plugins[0].version=="5.0.0"
+  if jq -e --arg v "$(jq -r .version "$ROOT/plugins/pull-request/.claude-plugin/plugin.json")" '.name=="pull-request" and (.plugins|length)==1 and .plugins[0].name=="pull-request" and .plugins[0].version==$v
             and ((.plugins[0].source=="./plugins/pull-request") or (.plugins[0].source=={"source":"local","path":"./plugins/pull-request"}))' "$ROOT/$market" >/dev/null; then
     pass "$market identityとsource"
   else
