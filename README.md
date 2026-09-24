@@ -8,6 +8,7 @@ Pull Requestの作成、競合の調査・解消、reviewの評価・修正・�
 
 - branchの差分、検証結果、既存PRを確認して重複のないPRを作りたい
 - base branchとの競合について、両側の変更意図を先に調べたい
+- PR作成後にbaseが進み、追従（`agent-work-policy` の `update-branch`）が競合したbranchを、履歴を書き換えずに解消したい
 - 行単位の機械的な選択ではなく、履歴と過去PRに基づいて競合を解消したい
 - review commentをそのまま採用せず、sourceと照合して採否を判断したい
 - 採用した指摘だけを修正し、検証、commit、pushまで進めたい
@@ -125,12 +126,3 @@ bash scripts/validate.sh
 ## 保守tool
 
 保守tool（root validator `validate-plugin-repository.py`、`doctor.py`、`lint-consumer-contract.py`、`test-hardening.py`、`release.py`、eval runner）の基準資料は兄弟checkout `../harness-tools/` だけである。このrepositoryは複製も同期機構も持たず、`scripts/validate.sh` は `../harness-tools/tools/` が無ければ止まる。消費側契約lintは依存providerの実配布物（`../grill-plugins` / `../write-doc-plugins` / `../agent-work-policy-plugins`）も要る。CIは `.github/workflows/validate.yml` で `harness-tools` と依存providerを兄弟checkoutし、`harness-tools/ci/validate.sh` で local と同じcommandを実行する。実行時（skillの利用時）に別repositoryや生成CLIは不要である。
-
-## 配置と設定の変更（2026-09-16）
-
-- marketplaceの `source` を `./plugins` から `./plugins/pull-request` へ、公開入口を `plugins/pull-request/skills/{open-pull-request, respond-to-pr-review}` へ移した。隣接 `playbook.yml` の `name` は入口名と同じになった。配置変更はinstall identityを変えるため、release時にmajor bumpが要る。
-- 内部skill `pr-conflict-inspect` / `pr-conflict-resolve` / `pr-create` は `open-pull-request` へ、`pr-review-assess` / `pr-review-apply` / `pr-review-verify` は `respond-to-pr-review` へ統合した。判断規律の参照文書と決定論的tool（`assessment.py` / `brief.py` / `verify.sh` / `review-gate.py` / `gate.sh`）は入口へ移した。
-- 同日のハーネス進化第3回で、競合の調査・資料化・gate・解消・検証を `resolve-pr-conflicts` 公開入口へ分け、`open-pull-request` は平時の流れ（設定読取 → 照会 → 競合検出 → 検証 → PR準備 → push → PR作成 → レビュー受付gate）に絞った。競合を検出したときだけ `open-pull-request` が `resolve-pr-conflicts` を `steps[].skill` で呼ぶ。`conflict_report.timing` は `resolve-pr-conflicts.config.yml` へ移し、`open-pull-request.config.yml` は `verification.commands`（PR作成前の検証）だけを持つ。設定の読み取りは3入口とも `scripts/config.py check|read --repo` に揃え、`review-gate.py` は同じ固定pathを `--repo` から解決する。
-- repositoryごとの方針（`conflict_report.timing` / `verification.commands`、`report` / `permissions` / `gates` / `verification` / `git`）は `playbook.yml` から `<repo>/.harness-plugins/<入口>.config.yml` へ移し、1層・必須にした。`review-gate.py` が schema を検査し、公開Git操作のpermissionやgateの混入を拒否する。
-- 設定解決runtime（`prepare.sh` / `resolve.sh` / `run-config.py` / `state.py` / `validate-config.sh`）、4層の設定探索、入口ごとのnested manifest、`dependencies.yml` による束縛の実行時解決を撤去した。
-- `agent-work-policy` の呼び名は `agent-work-policy:work-with-policy` から `agent-work-policy:agent-work-policy` になった。

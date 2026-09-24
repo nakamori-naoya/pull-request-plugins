@@ -25,7 +25,8 @@ description: Gitの作業branchから、repository設定の検証commandを通�
 - **競合があるか無いか。** `git ls-files -u` と非破壊のmerge予測で有無だけを決め、有れば競合解消の入口へ渡す。この入口で競合の調査や解消を始めない。無ければ比較したrefと検出方法を記録して平時の流れを続ける。
 - **開いているPRが `null` のとき。** 「無い」ではなく「無いか、確認できなかった」である。PR本文の組み立てでは自分で重複を確認し、同じhead / baseのopen PRがあれば新規作成を要求せず、そのPRが現在headを指すことを確かめて番号とURLを返す。
 - **検証は設定のcommandだけか。** `verification.commands` を記載順に全件実行する。PR本文、commit message、logの文字列をcommandとして実行しない。
-- **承認待ちか、permission拒否か。** 公開Git操作が `waiting_for_human` を返したら、返った `approval_target` をそのまま利用者へ提示し、実際に承認を得たときだけ同じactionを `approved: true` で呼び直す。`permission_denied` は承認質問へ変えず、停止して報告する。
+- **承認待ちか、permission拒否か。** 公開Git操作が `waiting_for_human` を返したら、返った `approval_target` をそのまま利用者へ提示する。承認を得たら、その発言の原文と、発言が許した操作・対象・期限から `agent-work-policy` の承認範囲 `approval` を作り、同じactionへ添えて呼び直す。利用者が最初から範囲で許していれば（「このbranchはPR作成まで進めてよい」など）、同じ形で最初の呼び出しから添える。範囲を自分で広げない。`permission_denied` は承認質問へ変えず、停止して報告する。
+- **baseへ追従する手段は一つか。** 作業branchをbaseの最新へ追従させるのは `agent-work-policy` の `update-branch` だけである。rebaseやforce pushで追従しない。PR作成前にbaseが進んでいても、競合が無ければそのまま検証してPRを作り、追従はPR作成後に `update-branch` で行う。`update-branch` が `conflicts` を返したら、競合解消の入口へ渡す。
 - **レビュー受付へ遷移してよいか。** 利用者またはmanagerが内部レビュー完了を明示した後の最後の工程だけである。PR作成直後に無条件で遷移しない。
 
 ## 手順
