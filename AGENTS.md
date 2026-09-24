@@ -11,3 +11,7 @@
 repositoryごとの方針は `<repo>/.harness-plugins/<入口>.config.yml` の1層で受け取り（1入口1設定file）、同梱既定へのfallbackと層の探索を置かない。設定の読み取りは各入口の `scripts/config.py check|read --repo <repository_path>`（stdin不要、path固定、stdoutにJSON 1文書、失敗はexit 2と `reason`）に揃え、その契約は各SKILL.mdの手順に1か所だけ書く。プロジェクト固有の文脈は対象repositoryのAGENTS.md / CLAUDE.mdと各入口の任意入力 `references`（絶対path配列）で渡す。`SKILL.md`、`references/`、`playbook.yml` に実行基盤の配管（`${.`マクロ、同期block、環境変数によるroot解決、設定解決scriptの実行指示）を書かない。
 
 変更後は `bash scripts/validate.sh` と `bash /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/scripts/validate.sh /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/pull-request-plugins` を実行する。
+
+## 検査スクリプトは、意味が一意に決まることだけを判定する
+
+このrepositoryの検査スクリプト（validate、lint、verify、checkなど、名前を問わない）が判定してよいのは、ファイルや見出しの有無、識別子や版の一致、宣言と配置の対応、禁止された書き方の有無のように、入力と基準資料から意味が決定論的に一意に決まることだけである。読んで解釈しないと決まらないことや、件数や語の出現のような品質の代わりの指標は判定せず、エージェントが読んで評価する（意味評価）。判定が一意に決まることを宣言できない検査は作らず、詳しい条件は `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.agents/rules/deterministic-validation.md` に従う。
