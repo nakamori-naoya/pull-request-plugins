@@ -129,4 +129,10 @@ bash scripts/validate.sh
 
 ## このpackageが持つ判断
 
-`pull-request` は、PRを作る流れ、競合の意図を復元して意味を保って解く方法、review commentの採否の判断を持つ。この package 自身の人の確認（レビュー受付、解消前の提案、評価と修正の前後）もここで扱い、承認範囲の形と組み立ててよい者は `agent-work-policy` の公開契約に従う。公開Git操作のpermission、gate、merge方式とbaseへの追従の関係は持たず、`agent-work-policy` に従う。
+`open-pull-request` は、検証済みのbranchから重複のないPRを作り、内部レビューの完了後にレビュー受付へ移す流れを持つ。
+
+`resolve-pr-conflicts` は、競合の両側の意図を履歴から復元し、baseを作業branchへmergeする形で意味を保って解く方法を持つ。
+
+`respond-to-pr-review` は、review commentを受け入れるか、退けるか、保留するかの判断と、採用した分だけを直す範囲を持つ。
+
+三つの入口は、この package 自身の人の確認（レビュー受付、解消前の提案、評価と修正の前後）を、承認範囲で照合する。確認の名前（`pull-request/` で始まるもの）はこの package が持つ。承認範囲の形と組み立ててよい者は持たず、`agent-work-policy` の公開契約に従う。公開Git操作のpermission、gate、merge方式とbaseへの追従の関係も、`agent-work-policy` に従う。

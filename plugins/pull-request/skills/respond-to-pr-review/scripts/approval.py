@@ -3,8 +3,9 @@
 承認範囲の形、組み立ててよい者、quote の入れ方は agent-work-policy の公開契約 §2.2 が持つ。
   approval = {"actions": [...], "pull_requests": [<PR番号>], "branches": [<作業branchまたは末尾 / のprefix>],
               "until": "<時差付きISO 8601>", "quote": ["<利用者の発言の原文>", ...]}
-このpackageが持つのは、actions に並べてよい確認の名前（ready-for-review、resolve-conflicts、after_assessment、
-before_modify、after_modify）だけである。それ以外の名前は他のpackageの操作として無視する。
+このpackageが持つのは、actions に並べてよい確認の名前だけである。名前は他のpackageの操作と重ならないよう
+`pull-request/` で始め、単語をハイフンでつなぐ（pull-request/ready-for-review、pull-request/resolve-conflicts、
+pull-request/after-assessment、pull-request/before-modify、pull-request/after-modify）。それ以外の名前は無視する。
 """
 from __future__ import annotations
 
