@@ -18,7 +18,7 @@ review取込と修正のpermission工程が返す許可・禁止を使う。禁�
 
 `commit`と`push`は、公開Skill `agent-work-policy:agent-work-policy`へ**1呼び出し1操作**で委譲する。公開契約の入力objectを直接渡し、公開結果objectを直接受け取る。そのactionが使わないキーは渡さない。依存先root、内部工程、script、設定ファイル、入力・出力YAMLは扱わない。
 
-入力objectは`contract: agent-work-policy/agent-work-policy`、`version: 1`、`action`、`repo`としてrepositoryの絶対path、およびそのactionに必要な値だけを持つ。commitではrepository相対pathの`paths`と`message`を渡す。pushにaction固有キーを足さない。利用者の承認があるときだけ、その発言から作った承認範囲`approval`（操作、対象、期限、発言の原文）を足す。公開方針はrepository単位で一つであり、呼び出し元から差し替えない。
+入力objectは`contract: agent-work-policy/agent-work-policy`、`version: 1`、`action`、`repo`としてrepositoryの絶対path、およびそのactionに必要な値だけを持つ。commitではrepository相対pathの`paths`と`message`を渡す。pushにaction固有キーを足さない。承認は`agent-work-policy`の承認範囲`approval`で渡し、その形と組み立ててよい者は`agent-work-policy`の公開契約§2.2に従う。呼び出し元から受け取った`approval`はそのまま渡し、自分で作り直さない。公開方針はrepository単位で一つであり、呼び出し元から差し替えない。
 
 直接結果の`contract`、`version`、`action`が入力と一致し、`status`、`gate_state`、`operation_result`、`workspace`、`reason`が公開schemaに合うことを確認する。`waiting_for_human`では`approval_target`を利用者へ提示し、`failed`では`reason`を報告して停止する。`completed`のときだけcommitまたはpushの`operation_result`を後続へ使う。
 
