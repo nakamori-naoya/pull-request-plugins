@@ -59,7 +59,7 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 6. **PR本文を組み立てる（`prepare-pull-request`）。** baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読み、titleとbodyへ目的、主な変更、検証commandと結果、既知の制約、未確認事項、競合を解消した場合はその概要と方針と資料の参照を書く。secret、local path、一時fileを本文へ入れない。bodyは一時領域のfileへ書き、その絶対pathを `pr_body_file` にする。
 7. **pushする（`push`）。** `action: push` を `agent-work-policy:agent-work-policy` へ渡す。action固有キーは足さない。
 8. **PRを作る（`create-pull-request`）。** `action: pull-request`、`title`、実在する `body_file` の絶対pathを渡す。返った `operation_result.pull_request` / `url` / `draft` を使う。
-9. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `python3 scripts/gate.py --action ready-for-review --pr <PR番号>` で内部レビュー完了の明示を待つ。利用者の承認範囲 `approval` があれば、`--approval '<JSON>'` でそのまま渡す。形、組み立ててよい者、`quote` の入れ方は `agent-work-policy` の公開契約 §2.2 に従い、公開Git操作と同じobjectの `actions` に `ready-for-review` が並んでいれば通る。受け取った承認は自分で作り直さない。標準出力のJSONは、`allowed`（終了code `0`）、`waiting_for_human`（`3`。範囲の外なら `outside_approval` に外れた要素）、`invalid`（`2`。引数か承認範囲の形の不正）のどれかである。`3` なら承認を待つ。承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
+9. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `python3 scripts/gate.py --action pull-request/ready-for-review --pr <PR番号>` で内部レビュー完了の明示を待つ。利用者の承認範囲 `approval` があれば、`--approval '<JSON>'` でそのまま渡す。形、組み立ててよい者、`quote` の入れ方は `agent-work-policy` の公開契約 §2.2 に従い、公開Git操作と同じobjectの `actions` に `pull-request/ready-for-review` が並んでいれば通る。受け取った承認は自分で作り直さない。標準出力のJSONは、`allowed`（終了code `0`）、`waiting_for_human`（`3`。範囲の外なら `outside_approval` に外れた要素）、`invalid`（`2`。引数か承認範囲の形の不正）のどれかである。`3` なら承認を待つ。承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
 
 各公開Skillへは1回の呼び出しで1操作だけを頼み、そのactionが使わないキーは渡さない。設定file、入力・出力YAML、依存先root、依存先の実行scriptは扱わない。
 
