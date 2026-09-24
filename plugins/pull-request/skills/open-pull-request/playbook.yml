@@ -61,7 +61,7 @@ steps:
     needs: [pushed_branch, pr_title, pr_body_file]
     provides: [pull_request, gate_state]
   - id: approve-ready-for-review
-    script: scripts/gate.sh
+    script: scripts/gate.py
     purpose: 内部レビュー完了の明示があるまでレビュー受付への遷移を止める
     needs: [pull_request]
     provides: [internal_review_complete]

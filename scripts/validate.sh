@@ -124,9 +124,11 @@ jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["commit","push"] 
        and (.steps[0].provides|index("report"))
        and all(.steps[]|select(has("when") and (.when|test("report\\."))); (.needs|index("report")))' <<<"$review_pb" >/dev/null \
   && pass "respond-to-pr-review: commit / push は agent-work-policy へ委譲、accept 0件分岐とreview取込permissionの順序、設定値 report は read-policy の provides から when 参照工程へ到達" || fail "respond-to-pr-review: 委譲と分岐"
-# gate.sh の複製一致 — 基準資料: open-pull-request/scripts/gate.sh。入力: resolve-pr-conflicts/scripts/gate.sh。正規化: byte 列。合格述語: cmp が一致。
+# gate.py と approval.py の複製一致 — 基準資料: open-pull-request/scripts/ の同名file。入力: 他の入口の同名file。正規化: byte 列。合格述語: cmp が一致。
 # 失敗時の診断: 2 入口の path。正例: 現行。反例: 片方だけ編集。境界例: 改行 code の差も不合格。意味評価として残す範囲: gate の意味（何を承認するか）
-cmp -s "$OPEN/scripts/gate.sh" "$RESOLVE/scripts/gate.sh" && pass "gate.sh は2入口でbyte一致（同じ基準資料の複製）" || fail "gate.sh が2入口で異なる"
+cmp -s "$OPEN/scripts/gate.py" "$RESOLVE/scripts/gate.py" && pass "gate.py は2入口でbyte一致（同じ基準資料の複製）" || fail "gate.py が2入口で異なる"
+cmp -s "$OPEN/scripts/approval.py" "$RESOLVE/scripts/approval.py" && cmp -s "$OPEN/scripts/approval.py" "$REVIEW/scripts/approval.py" \
+  && pass "approval.py は3入口でbyte一致（同じ基準資料の複製）" || fail "approval.py が3入口で異なる"
 
 # 素の公開操作（git commit / push、gh pr create / merge）を配布物のshell / Pythonに置かない
 has_raw_publication_operation() {
@@ -196,8 +198,11 @@ git -C "$repo" init -q -b main; printf 'a\n' > "$repo/a.txt"; git -C "$repo" add
 gate_ok=1
 python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" | jq -e '.status=="ready"' >/dev/null || gate_ok=0
 python3 "$REVIEW/scripts/review-gate.py" permission --repo "$repo" --name review_import | jq -e '.allowed==true' >/dev/null || gate_ok=0
-if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment >/dev/null 2>&1; then gate_ok=0; fi
-python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --approved | jq -e '.status=="approved"' >/dev/null || gate_ok=0
+if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 >/dev/null 2>&1; then gate_ok=0; fi
+scope='{"actions":["after_assessment"],"targets":["7"],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 --approval "$scope" | jq -e '.status=="approved"' >/dev/null || gate_ok=0
+out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_modify --target 7 --approval "$scope"); [ "$?" -eq 3 ] && jq -e '.outside_approval==["action"]' <<<"$out" >/dev/null || gate_ok=0
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 --approval '{"actions":["after_assessment"]}' >/dev/null 2>&1; [ "$?" -eq 2 ] || gate_ok=0
 printf 'dirty\n' > "$repo/b.txt"
 if python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" >/dev/null 2>&1; then gate_ok=0; fi
 rm "$repo/b.txt"
@@ -217,17 +222,29 @@ if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name unknown_g
 
 for entry in open-pull-request resolve-pr-conflicts; do
   gate_sh_ok=1
-  python3 - "$ENTRY_DIR/$entry/scripts/gate.sh" <<'PY' || gate_sh_ok=0
+  python3 - "$ENTRY_DIR/$entry/scripts" <<'PY' || gate_sh_ok=0
 import json, subprocess, sys
-script = sys.argv[1]
-waiting = subprocess.run(["bash", script, "--report-ref", "/tmp/report.md"], capture_output=True, text=True)
+from datetime import datetime, timezone
+scripts = sys.argv[1]
+sys.path.insert(0, scripts)
+import approval
+gate = [sys.executable, f"{scripts}/gate.py", "--action", "resolve-conflicts", "--target", "/tmp/report.md"]
+scope = {"actions": ["resolve-conflicts"], "targets": ["/tmp/report.md"], "until": "2999-01-01T00:00:00+00:00", "quote": ["この方針で解消していい"]}
+waiting = subprocess.run(gate, capture_output=True, text=True)
 assert waiting.returncode == 3 and json.loads(waiting.stdout)["status"] == "waiting_for_human"
-approved = subprocess.run(["bash", script, "--report-ref", "/tmp/report.md", "--approved"], capture_output=True, text=True)
+approved = subprocess.run(gate + ["--approval", json.dumps(scope)], capture_output=True, text=True)
 assert approved.returncode == 0 and json.loads(approved.stdout)["status"] == "approved"
-invalid = subprocess.run(["bash", script, "--approved"], capture_output=True, text=True)
-assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid"
+outside = subprocess.run(gate + ["--approval", json.dumps({**scope, "targets": ["/tmp/other.md"]})], capture_output=True, text=True)
+assert outside.returncode == 3 and json.loads(outside.stdout)["outside_approval"] == ["target"]
+for broken in ({**scope, "until": "2999-01-01T00:00:00"}, {**scope, "quote": []}, {k: v for k, v in scope.items() if k != "quote"}):
+    invalid = subprocess.run(gate + ["--approval", json.dumps(broken)], capture_output=True, text=True)
+    assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid", broken
+missing = subprocess.run([sys.executable, f"{scripts}/gate.py", "--target", "x"], capture_output=True, text=True)
+assert missing.returncode == 2
+edge = datetime(2999, 1, 1, tzinfo=timezone.utc)
+assert approval.mismatch(approval.parse(json.dumps(scope)), "resolve-conflicts", "/tmp/report.md", edge) == ["until"]
 PY
-  [ "$gate_sh_ok" -eq 1 ] && pass "$entry gate.sh: 承認待ち / 承認済み / 引数不備" || fail "$entry gate.sh"
+  [ "$gate_sh_ok" -eq 1 ] && pass "$entry gate.py: 承認待ち / 承認範囲の内と外 / 形の不正 / 期限の境界" || fail "$entry gate.py"
 done
 yq -o=json -I=0 '.' "$OPEN/assets/open-pull-request.config.example.yml" | jq -e '.version==1 and (.verification.commands|type)=="array" and (keys|sort)==["verification","version"]' >/dev/null \
   && pass "open-pull-request 設定の記入例が schema（version、commands 配列だけ。timing を持たない）に合う" || fail "open-pull-request 設定の記入例"

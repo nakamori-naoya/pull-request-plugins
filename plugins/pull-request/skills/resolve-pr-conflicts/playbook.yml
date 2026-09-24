@@ -36,7 +36,7 @@ steps:
     needs: [conflict_report, conflict_state, conflict_assessment, document_destination]
     provides: [status, path, reason]
   - id: approve-conflict-proposal
-    script: scripts/gate.sh
+    script: scripts/gate.py
     when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
     purpose: 提案資料を示した後、利用者の明示承認まで競合解消を止める
     needs: [conflict_report, path]
