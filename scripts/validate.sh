@@ -198,11 +198,11 @@ git -C "$repo" init -q -b main; printf 'a\n' > "$repo/a.txt"; git -C "$repo" add
 gate_ok=1
 python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" | jq -e '.status=="ready"' >/dev/null || gate_ok=0
 python3 "$REVIEW/scripts/review-gate.py" permission --repo "$repo" --name review_import | jq -e '.allowed==true' >/dev/null || gate_ok=0
-if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 >/dev/null 2>&1; then gate_ok=0; fi
-scope='{"actions":["after_assessment"],"targets":["7"],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'
-python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 --approval "$scope" | jq -e '.status=="approved"' >/dev/null || gate_ok=0
-out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_modify --target 7 --approval "$scope"); [ "$?" -eq 3 ] && jq -e '.outside_approval==["action"]' <<<"$out" >/dev/null || gate_ok=0
-python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --target 7 --approval '{"actions":["after_assessment"]}' >/dev/null 2>&1; [ "$?" -eq 2 ] || gate_ok=0
+if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 >/dev/null 2>&1; then gate_ok=0; fi
+scope='{"actions":["after_assessment","merge"],"pull_requests":[7],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 --approval "$scope" | jq -e '.status=="allowed"' >/dev/null || gate_ok=0
+out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_modify --pr 7 --approval "$scope"); [ "$?" -eq 3 ] && jq -e '.outside_approval==["action"]' <<<"$out" >/dev/null || gate_ok=0
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 --approval '{"actions":["after_assessment"]}' >/dev/null 2>&1; [ "$?" -eq 2 ] || gate_ok=0
 printf 'dirty\n' > "$repo/b.txt"
 if python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" >/dev/null 2>&1; then gate_ok=0; fi
 rm "$repo/b.txt"
@@ -228,21 +228,21 @@ from datetime import datetime, timezone
 scripts = sys.argv[1]
 sys.path.insert(0, scripts)
 import approval
-gate = [sys.executable, f"{scripts}/gate.py", "--action", "resolve-conflicts", "--target", "/tmp/report.md"]
-scope = {"actions": ["resolve-conflicts"], "targets": ["/tmp/report.md"], "until": "2999-01-01T00:00:00+00:00", "quote": ["この方針で解消していい"]}
+gate = [sys.executable, f"{scripts}/gate.py", "--action", "resolve-conflicts", "--branch", "agent/fix-a"]
+scope = {"actions": ["resolve-conflicts", "push"], "branches": ["agent/"], "until": "2999-01-01T00:00:00+00:00", "quote": ["この方針で解消していい"]}
 waiting = subprocess.run(gate, capture_output=True, text=True)
 assert waiting.returncode == 3 and json.loads(waiting.stdout)["status"] == "waiting_for_human"
 approved = subprocess.run(gate + ["--approval", json.dumps(scope)], capture_output=True, text=True)
-assert approved.returncode == 0 and json.loads(approved.stdout)["status"] == "approved"
-outside = subprocess.run(gate + ["--approval", json.dumps({**scope, "targets": ["/tmp/other.md"]})], capture_output=True, text=True)
-assert outside.returncode == 3 and json.loads(outside.stdout)["outside_approval"] == ["target"]
-for broken in ({**scope, "until": "2999-01-01T00:00:00"}, {**scope, "quote": []}, {k: v for k, v in scope.items() if k != "quote"}):
+assert approved.returncode == 0 and json.loads(approved.stdout)["status"] == "allowed"
+outside = subprocess.run(gate + ["--approval", json.dumps({**scope, "branches": ["agent/other"]})], capture_output=True, text=True)
+assert outside.returncode == 3 and json.loads(outside.stdout)["outside_approval"] == ["branch"]
+for broken in ({**scope, "until": "2999-01-01T00:00:00"}, {**scope, "quote": []}, {k: v for k, v in scope.items() if k != "quote"}, {k: v for k, v in scope.items() if k != "branches"}, {**scope, "targets": ["x"]}):
     invalid = subprocess.run(gate + ["--approval", json.dumps(broken)], capture_output=True, text=True)
     assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid", broken
-missing = subprocess.run([sys.executable, f"{scripts}/gate.py", "--target", "x"], capture_output=True, text=True)
+missing = subprocess.run([sys.executable, f"{scripts}/gate.py", "--action", "resolve-conflicts", "--pr", "1", "--branch", "agent/x"], capture_output=True, text=True)
 assert missing.returncode == 2
 edge = datetime(2999, 1, 1, tzinfo=timezone.utc)
-assert approval.mismatch(approval.parse(json.dumps(scope)), "resolve-conflicts", "/tmp/report.md", edge) == ["until"]
+assert approval.mismatch(approval.parse(json.dumps(scope)), "resolve-conflicts", None, "agent/fix-a", edge) == ["until"]
 PY
   [ "$gate_sh_ok" -eq 1 ] && pass "$entry gate.py: 承認待ち / 承認範囲の内と外 / 形の不正 / 期限の境界" || fail "$entry gate.py"
 done

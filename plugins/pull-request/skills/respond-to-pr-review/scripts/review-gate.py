@@ -3,9 +3,9 @@
 
   review-gate.py preflight  --repo <repository_path>
   review-gate.py permission --repo <repository_path> --name review_import|modify
-  review-gate.py gate       --repo <repository_path> --name after_assessment|before_modify|after_modify --target <PR番号> [--approval '<承認範囲のJSON>']
+  review-gate.py gate       --repo <repository_path> --name after_assessment|before_modify|after_modify --pr <PR番号> [--approval '<承認範囲のJSON>']
 
-承認範囲の形と照合は同じdirectoryの approval.py が持つ（操作 = gate名、対象 = PR番号）。
+承認範囲の照合は同じdirectoryの approval.py が行う（actions にgate名、pull_requests にPR番号）。
 
 設定は同じdirectoryの config.py の load() で読む（<git root>/.harness-plugins/respond-to-pr-review.config.yml に固定・1層・fallback無し）。
 出力は標準出力のJSON 1文書。exit 0 = 通過、2 = 設定file不在・schema違反・git repositoryでない・引数不備・承認範囲の形の不正、3 = dirty開始・permission拒否・承認待ち（範囲の外なら outside_approval に外れた要素）。
@@ -30,7 +30,7 @@ def main():
         item.add_argument("--repo", required=True)
         item.add_argument("--name", required=True)
         if command == "gate":
-            item.add_argument("--target", required=True)
+            item.add_argument("--pr", required=True, type=int)
             item.add_argument("--approval")
     args = parser.parse_args()
     cfg, path, root = load(args.repo)
@@ -51,7 +51,7 @@ def main():
     if args.name not in cfg["gates"]:
         fail("未知のgate: {}".format(args.name), path, "schema_violation")
     required = cfg["gates"][args.name]
-    result = {"gate": args.name, "target": args.target, "required": required}
+    result = {"gate": args.name, "pr": args.pr, "required": required}
     outside = []
     if required:
         if args.approval is None:
@@ -62,14 +62,14 @@ def main():
             except ValueError as exc:
                 print(json.dumps({**result, "status": "invalid", "detail": str(exc)}, ensure_ascii=False))
                 raise SystemExit(2)
-            outside = approval_scope.mismatch(scope, args.name, args.target, datetime.now(timezone.utc))
+            outside = approval_scope.mismatch(scope, args.name, args.pr, None, datetime.now(timezone.utc))
     if outside is None or outside:
         payload = {**result, "status": "waiting_for_human"}
         if outside:
             payload["outside_approval"] = outside
         print(json.dumps(payload, ensure_ascii=False))
         raise SystemExit(3)
-    print(json.dumps({**result, "status": "approved"}, ensure_ascii=False))
+    print(json.dumps({**result, "status": "allowed"}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
