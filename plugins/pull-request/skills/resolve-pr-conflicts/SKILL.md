@@ -31,7 +31,7 @@ base branch、remote、作業branch、working treeがcleanか、baseがあるか
 
 ### `before_resolution` か `after_resolution` か
 
-前者は競合、両側の目的、推奨方針、検証案を資料化して利用者へ示し、`gate.sh` の明示承認を得るまで解消を始めない。後者は事前資料とgateを使わず、解消後に競合、採った方針、実際の修正、検証結果を資料化して示す。
+前者は競合、両側の目的、推奨方針、検証案を資料化して利用者へ示し、`gate.py` で承認を確かめるまで解消を始めない。後者は事前資料とgateを使わず、解消後に競合、採った方針、実際の修正、検証結果を資料化して示す。
 
 ### 検証は設定のcommandだけか
 
@@ -39,14 +39,14 @@ base branch、remote、作業branch、working treeがcleanか、baseがあるか
 
 ### 解消はbaseを取り込む形か
 
-既にPRがあるbranchでbaseへの追従が競合したとき（`agent-work-policy` の `update-branch` が `conflicts` を返したとき）も、この入口で解く。解消はbaseを作業branchへmergeする形で行い、rebaseで履歴を書き換えない。解消後のbranchは通常のcommitとpushで公開できる状態にする。
+既にPRがあるbranchでbaseへの追従が競合したとき（`agent-work-policy` の `update-branch` が `conflicts` を返したとき）も、この入口で解く。解消はbaseを作業branchへmergeする形で行い、rebaseで履歴を書き換えない。解消後のbranchは通常のcommitとpushで公開できる状態にする。このmerge commitがbaseの履歴に入るかはmerge方式で決まり、その関係は `agent-work-policy` が持つ（squashならbaseに入らない。方式と両立しないときは `update-branch` が `method_incompatible` を返すので、その場合はこの形で解かずに止まって報告する）。
 
 ## 手順
 
 1. **設定を読む（`read-policy`）。** `references` があれば先に読む。`python3 scripts/config.py read --repo <repository_path>` を実行する。stdinは使わず、設定fileのpathは引数で受けずtoolが `<repository のgit root>/.harness-plugins/resolve-pr-conflicts.config.yml` に固定する。出力は標準出力のJSON 1文書 `{"config": <絶対path>, "values": {version, conflict_report, verification}}`、終了codeは `0` = 読めた、`2` = 失敗（標準出力のJSON `{"error", "config", "reason"}`。`reason` は `policy_missing` = 設定file不在 / `schema_violation` = keyの過不足・型違い・許容外の値・YAMLとして読めない / `not_a_git_repository` = `--repo` がgit repositoryでない）。`2` なら止まる。`check` を渡すと検査だけを行い `{"status": "ok", "config": <絶対path>}` を返す。以降の `timing` と検証commandは `values` の値を使う。
 2. **現況を照会する（`workspace`）。** `agent-work-policy` の公開契約の入力object（`contract: agent-work-policy/agent-work-policy`、`version: 1`、`action: inspect`、`repo`）を公開Skill `agent-work-policy:agent-work-policy` へ直接渡す。返ったobjectの `contract` / `version` / `action` が入力と一致し、`status` / `gate_state` / `operation_result` / `workspace` / `reason` が契約に合うことを確かめ、`completed` のときだけ値を後続へ使う。`inspect` は既存の作業branchでもworking treeが汚れていても止まらない。
 3. **競合を調べる（`inspect-conflicts`）。** repository、head branch、base branch、head SHA、base SHAを記録する。既存の競合状態は `git ls-files -u`、未mergeなら非破壊のmerge予測で確認する。競合があれば各競合について base / head / 共通祖先の実装、呼び出し元、test、設定、公開契約を読み、関係するcommit、blame、issue番号、過去のGitHub PR本文・差分・reviewから両側の目的を復元する。PRを取得できない場合は取得できない範囲と代わりに確認した履歴を明記する。sourceは変更しない。競合なしなら比較したrefと検出方法を添えて `has_conflicts: false` とし、資料作成と解消を飛ばして報告へ進む。
-4. **解消前の提案を示す（`report-before-resolution` / `approve-conflict-proposal`。`timing: before_resolution` かつ競合ありのときだけ）。** 同じagentが競合内容と推奨解消方針を `{kind: text, content: <本文>}` の `material` にし、`document_destination` から組んだ保存先を公開Skill `write-doc:write-doc` へ直接渡す。`status: completed` の `path` だけを後続へ使い、`failed` なら `reason` を報告して止まる。その後 `bash scripts/gate.sh --report-ref <path>` を実行する。標準出力のJSONが `waiting_for_human` で終了code `3` なら承認を待ち、利用者の明示承認後だけ `--approved` を付けて呼び直す（`approved` / `0`）。`2` は引数不備。
+4. **解消前の提案を示す（`report-before-resolution` / `approve-conflict-proposal`。`timing: before_resolution` かつ競合ありのときだけ）。** 同じagentが競合内容と推奨解消方針を `{kind: text, content: <本文>}` の `material` にし、`document_destination` から組んだ保存先を公開Skill `write-doc:write-doc` へ直接渡す。`status: completed` の `path` だけを後続へ使い、`failed` なら `reason` を報告して止まる。その後 `python3 scripts/gate.py --action resolve-conflicts --target <資料のpath>` を実行する。承認範囲 `{actions, targets, until, quote}`（操作 `resolve-conflicts`、対象の資料のpath、時差付きの期限、利用者の発言の原文の配列）があれば `--approval '<JSON>'` で渡す。承認範囲を組み立ててよい者と `quote` の入れ方は、公開Git操作の承認と同じく `agent-work-policy` の公開契約 §2.2 に従う。受け取った承認はそのまま渡し、自分で作り直さない。標準出力のJSONは、`approved`（終了code `0`）、`waiting_for_human`（`3`。範囲の外なら `outside_approval`）、`invalid`（`2`）のどれかである。`3` なら承認を待つ。
 5. **解消して検証する（`resolve-conflicts`。競合ありのときだけ）。** 無関係な未commit変更、別の進行中merge、base不明、必要な操作権限不足があれば止まる。記録したSHAと現在SHA、競合集合を照合し、ずれていれば再調査する。守るべき振る舞いから統合結果を実装し、生成物は入力を統合して正規commandで再生成し、解消対象外の整理を混ぜない。unmerged entryが0件、競合markerが無い、解消diffが調査した目的と一致することを確かめ、設定fileの `verification.commands` を記載順に全件実行する。失敗したら完了にせず、再現commandと残る問題を返す。
 6. **解消後の実績を示す（`report-after-resolution`。`timing: after_resolution` かつ競合ありのときだけ）。** 起きていた競合、採った方針、修正、検証を `kind: text` の `material` にして `write-doc:write-doc` へ渡し、`path` を報告に使う。
 7. **報告する（`report`）。** 下の「出力」の項目を返す。
@@ -62,7 +62,7 @@ base branch、remote、作業branch、working treeがcleanか、baseがあるか
 - `write-doc` が `failed` を返した。gate・解消へ進まない。
 - 検証commandが1件でも失敗した。完了にせず、再現commandと残る問題を返す。
 - 無関係な未commit変更、別の進行中merge、base不明、必要な操作権限不足がある状態で競合解消を求められた。
-- 人間gate（`gate.sh` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ解消を始めない。
+- 人間gate（`gate.py` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ解消を始めない。
 
 次は止まらず、根拠を明示して進む。
 

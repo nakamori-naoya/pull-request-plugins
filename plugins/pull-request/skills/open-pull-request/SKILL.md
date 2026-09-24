@@ -43,7 +43,7 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 
 ### baseへ追従する手段は一つか
 
-作業branchをbaseの最新へ追従させるのは `agent-work-policy` の `update-branch` だけである。rebaseやforce pushで追従しない。PR作成前にbaseが進んでいても、競合が無ければそのまま検証してPRを作り、追従はPR作成後に `update-branch` で行う。`update-branch` が `conflicts` を返したら、競合解消の入口へ渡す。
+作業branchをbaseの最新へ追従させるのは `agent-work-policy` の `update-branch` だけである。rebaseやforce pushで追従しない。PR作成前にbaseが進んでいても、競合が無ければそのまま検証してPRを作り、追従はPR作成後に `update-branch` で行う。`update-branch` が `conflicts` を返したら、競合解消の入口へ渡す。`method_incompatible` を返したら、merge方式を変えるかは利用者が決めることなので、止まって報告する。
 
 ### レビュー受付へ遷移してよいか
 
@@ -59,7 +59,7 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 6. **PR本文を組み立てる（`prepare-pull-request`）。** baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読み、titleとbodyへ目的、主な変更、検証commandと結果、既知の制約、未確認事項、競合を解消した場合はその概要と方針と資料の参照を書く。secret、local path、一時fileを本文へ入れない。bodyは一時領域のfileへ書き、その絶対pathを `pr_body_file` にする。
 7. **pushする（`push`）。** `action: push` を `agent-work-policy:agent-work-policy` へ渡す。action固有キーは足さない。
 8. **PRを作る（`create-pull-request`）。** `action: pull-request`、`title`、実在する `body_file` の絶対pathを渡す。返った `operation_result.pull_request` / `url` / `draft` を使う。
-9. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `bash scripts/gate.sh --report-ref <PR番号またはURL>` で内部レビュー完了の明示を待つ。標準出力のJSONが `waiting_for_human` で終了code `3` なら承認を待ち、利用者の明示承認後だけ `--approved` を付けて呼び直す（`approved` / `0`。`2` は引数不備）。承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
+9. **レビュー受付へ遷移する（`approve-ready-for-review` / `ready-for-review`）。** `python3 scripts/gate.py --action ready-for-review --target <PR番号>` で内部レビュー完了の明示を待つ。承認範囲 `{actions, targets, until, quote}`（操作 `ready-for-review`、対象のPR番号、時差付きの期限、利用者の発言の原文の配列）があれば `--approval '<JSON>'` で渡す。承認範囲を組み立ててよい者と `quote` の入れ方は、公開Git操作の承認と同じく `agent-work-policy` の公開契約 §2.2 に従う。受け取った承認はそのまま渡し、自分で作り直さない。標準出力のJSONは、`approved`（終了code `0`）、`waiting_for_human`（`3`。範囲の外なら `outside_approval` に外れた要素）、`invalid`（`2`。引数か承認範囲の形の不正）のどれかである。`3` なら承認を待つ。承認後に `action: ready-for-review`、正の整数 `pr` を渡す。
 
 各公開Skillへは1回の呼び出しで1操作だけを頼み、そのactionが使わないキーは渡さない。設定file、入力・出力YAML、依存先root、依存先の実行scriptは扱わない。
 
@@ -71,7 +71,7 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 - `agent-work-policy` が `failed` を返した（`permission_denied` / `policy_missing` / `invalid_input` / 操作失敗）。`permission_denied` は承認質問へ変えない。
 - 競合解消の入口が止まった（承認待ち、検証失敗、その入口の停止条件）。その報告をそのまま返し、PR本文の組み立てへ進まない。
 - 検証commandが1件でも失敗した。PR本文の組み立てへ進まず、再現commandと残る問題を返す。
-- 人間gate（`gate.sh` の `waiting_for_human`、`agent-work-policy` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ先へ進まない。
+- 人間gate（`gate.py` の `waiting_for_human`、`agent-work-policy` の `waiting_for_human`）で承認待ち。承認対象を提示して待ち、承認が無ければ先へ進まない。
 
 次は止まらず、根拠を明示して進む。
 
