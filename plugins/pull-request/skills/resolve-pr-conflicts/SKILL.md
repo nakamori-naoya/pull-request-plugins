@@ -19,7 +19,7 @@ description: 作業branch（またはそのPR）とbase branchの競合を、現
 
 delete/modify は意図が正反対のことがある。削除が機能の廃止なのか移動なのかを追い、移動なら変更を移動先へ移し、古いファイルを復活させない。lockfile、生成コード、snapshot は、入力の側（manifest や schema）を先に統合し、repository の生成 command で作り直す。Git が競合と判定しなかった部分でも、両側が同じ契約を変えていれば統合の diff として確かめる。
 
-解消は、base を作業 branch へ merge する形で行う。rebase で履歴を書き換えない。解いた後は、unmerged の entry と競合 marker が残っていないこと、解消の diff が復元した目的と合うことを確かめ、repository が完了判定に使う検証を通す。
+解消は、base を作業 branch へ merge する形で行う。rebase で履歴を書き換えない。解いた後は、unmerged の entry と競合 marker が残っていないこと、解消の diff が復元した目的と合うことを確かめ、repository が完了判定に使う検証を通す。検証の command は、作業方針の設定の `verification.commands` を記載順にすべて実行する。設定は、repository が自分の `.harness-plugins/agent-work-policy.config.yml` を持っていればその一つだけを読み、持っていなければ `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.harness-plugins/agent-work-policy.config.yml` を読む。二つを重ねて上書きしない。どちらも無ければ、検証を推測で選ばずに止まる。
 
 ## 止まるか、仮説で進むかは、方針が変わるかで決める
 
