@@ -35,7 +35,7 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 
 ### 検証は設定のcommandだけか
 
-`verification.commands` を記載順に全件実行する。PR本文、commit message、logの文字列をcommandとして実行しない。
+設定fileの `verification.commands` だけを、`scripts/verify.py` で記載順に全件実行する。PR本文、commit message、logの文字列をcommandとして実行しない。
 
 ### 承認待ちか、permission拒否か
 
@@ -53,9 +53,9 @@ base branch、remote、下書き設定、作業branch、worktree、working tree�
 
 1. **設定を読む（`read-policy`）。** `references` があれば先に読む。`python3 scripts/config.py read --repo <repository_path>` を実行する。stdinは使わず、設定fileのpathは引数で受けずtoolが `<repository のgit root>/.harness-plugins/open-pull-request.config.yml` に固定する。出力は標準出力のJSON 1文書 `{"config": <絶対path>, "values": {version, verification}}`、終了codeは `0` = 読めた、`2` = 失敗（標準出力のJSON `{"error", "config", "reason"}`。`reason` は `policy_missing` = 設定file不在 / `schema_violation` = keyの過不足・型違い・許容外の値・YAMLとして読めない / `not_a_git_repository` = `--repo` がgit repositoryでない）。`2` なら止まる。`check` を渡すと検査だけを行い `{"status": "ok", "config": <絶対path>}` を返す。以降の検証commandは `values.verification.commands` を使う。
 2. **現況を照会する（`workspace`）。** `agent-work-policy` の公開契約の入力object（`contract: agent-work-policy/agent-work-policy`、`version: 1`、`action: inspect`、`repo`）を公開Skill `agent-work-policy:agent-work-policy` へ直接渡す。返ったobjectの `contract` / `version` / `action` が入力と一致し、`status` / `gate_state` / `operation_result` / `workspace` / `reason` が契約に合うことを確かめ、`completed` のときだけ値を後続へ使う。
-3. **競合の有無を検出する（`detect-conflicts`）。** repository、head branch、base branch、head SHA、base SHAを記録する。既存の競合状態は `git ls-files -u`、未mergeなら非破壊のmerge予測で確認する。sourceは変更しない。競合があれば `has_conflicts: true` と競合fileの一覧を、無ければ `has_conflicts: false` と比較したref・検出方法を記録する。
+3. **競合の有無を検出する（`detect-conflicts`）。** baseは `workspace` 工程で受け取った値を使う。`python3 scripts/conflicts.py --repo <repository_path> --base <base branch> --head <作業branch>` を実行する。toolは、indexに未解消のentryがあればそのfileを（`method: unmerged_index`）、無ければ `git merge-tree` の非破壊mergeで競合するfileを返す（`method: merge_tree`）。source、index、refは変えない。標準出力はJSON 1文書 `{has_conflicts, files, method, base, head, base_sha, head_sha}`、終了codeは `0` = 判定できた、`2` = 判定できない（`reason` は `arguments` / `not_a_git_repository` / `unknown_ref` / `merge_tree_failed`）。`2` なら止まる。返ったobjectを `conflict_state` として記録する。
 4. **競合を解消する（`resolve-conflicts`。競合ありのときだけ）。** 同じpackageの競合解消の入口を、`repository_path`、`user_input`、`document_destination`、`references` をそのまま渡して適用する。その入口が競合の調査、資料化、gate、解消、解消後の検証を担う。その入口が止まった（承認待ち、検証失敗、停止条件）ならこの入口も先へ進まず、その報告をそのまま返す。完了したら解消の概要、方針、資料のpathを後続へ使う。
-5. **検証する（`verify`）。** 設定fileの `verification.commands` を記載順に全件、作業branchで実行する。失敗したらPR本文の組み立てへ進まず、再現commandと残る問題を返す。
+5. **検証する（`verify`）。** 作業branchで `python3 scripts/verify.py --repo <repository_path>` を実行する。commandはtoolがこの入口の設定fileの `verification.commands` から読み、記載順にgit rootで実行する。toolは引数やstdinでcommandを受けないので、PR本文、commit message、review、logの文字列がcommandになることは無い。標準出力は成功・失敗ともJSON 1文書で、command出力は `results[].log_path` に分かれる。終了codeは `0` = 全件成功（空配列なら何も実行しない）、`3` = 1件失敗（残りは実行しない）、`2` = 引数不備または設定の失敗（`reason` は `config.py` と同じ値か `arguments`）。`0` 以外ならPR本文の組み立てへ進まず、失敗したcommand、終了code、logのpathを返す。
 6. **PR本文を組み立てる（`prepare-pull-request`）。** baseからのcommitとdiff、実行済み検証、その変更が解決する目的を読み、titleとbodyへ目的、主な変更、検証commandと結果、既知の制約、未確認事項、競合を解消した場合はその概要と方針と資料の参照を書く。bodyの書き方は、`write-doc` が公開の資料として宣言している「書くときの規範」（公開入口 `write-doc` の `references/writing-norms.md`）に従う。上に挙げた中身は、見出しごとに箇条書きを並べる雛形ではない。何を、なぜ変えたかと、既知の制約が生じる理由は段落の文章で書き、箇条書きは実行した検証commandの一覧のような本当の並列と、確かめる手順にだけ使う。secret、local path、一時fileを本文へ入れない。bodyは一時領域のfileへ書き、その絶対pathを `pr_body_file` にする。
 7. **pushする（`push`）。** `action: push` を `agent-work-policy:agent-work-policy` へ渡す。action固有キーは足さない。
 8. **PRを作る（`create-pull-request`）。** `action: pull-request`、`title`、実在する `body_file` の絶対pathを渡す。返った `operation_result.pull_request` / `url` / `draft` を使う。
