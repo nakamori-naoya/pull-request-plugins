@@ -13,7 +13,7 @@ PR は `git` と `gh` で直接作る。この skill が持つのは、エージ
 
 base との競合は、`git merge-tree --write-tree <base> <head>` のように作業ツリーを変えない方法で確かめる。競合があれば、この入口で解かずに resolve-pr-conflicts へ回し、解消と検証が済んでから戻る。
 
-PR を作る前に、repository が完了判定に使う検証を作業 branch で通す。通らなければ PR を作らず、失敗した command と残る問題を返す。
+PR を作る前に、repository が完了判定に使う検証を作業 branch で通す。通らなければ PR を作らず、失敗した command と残る問題を返す。検証の command は、作業方針の設定の `verification.commands` を記載順にすべて実行する。設定は、repository が自分の `.harness-plugins/agent-work-policy.config.yml` を持っていればその一つだけを読み、持っていなければ `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.harness-plugins/agent-work-policy.config.yml` を読む。二つを重ねて上書きしない。どちらも無ければ、検証を推測で選ばずに止まる。
 
 ## 本文には、何をなぜ変えたかを文章で書く
 
