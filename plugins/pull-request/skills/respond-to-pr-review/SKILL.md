@@ -18,7 +18,7 @@ PR review commentをsourceの不変条件と変更意図に照らして採否を
 
 プロジェクト固有の規約（置き場、命名、追加で従う資料）は、対象repositoryのAGENTS.md / CLAUDE.mdと`references`で渡される。この入口は既定値を持たず、指示文へ展開もしない。
 
-同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` の宣言順を実行順の正式な定義として扱う。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的なtool、`playbook:` は外部公開playbookの直接呼び出しである。
+同じagentが、同じdirectoryの [`playbook.yml`](playbook.yml) を読み、その `steps` に宣言された順に工程を実行する。`agent_work: invoking_agent` の工程はこのagentが同じ文脈で担う調査・判断・変更・検証、`script:` は決定論的なtool、`playbook:` は外部公開playbookの直接呼び出しである。
 
 ## 判断基準
 
