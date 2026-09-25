@@ -2,7 +2,7 @@
 # Scenario: pull-request package が公開入口3つ（open-pull-request / resolve-pr-conflicts / respond-to-pr-review）で自己完結し、
 #           各入口の決定論的toolが閉じた契約を守り、公開Git操作を自前で実行しない
 # 機械検査は宣言と実体の対応、隣接playbook.ymlの契約、設定fileのschemaと config.py check|read の契約、
-# gate / review-gate / verify の入出力、平時/例外の分離（open-pull-request が競合時だけ resolve-pr-conflicts を skill: で呼ぶ）、
+# gate / review-gate / verify / conflicts の入出力、平時/例外の分離（open-pull-request が競合時だけ resolve-pr-conflicts を skill: で呼ぶ）、
 # 素の公開操作の不在だけを判定する。競合解消の妥当性、review採否の判断、SKILL本文の判断基準の十分性は意味評価として残す。
 set -uo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -114,7 +114,7 @@ jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["workspace","push
 jq -e '[.steps[]|select(.playbook=="agent-work-policy")|.id]==["workspace"]
        and ((.requires|map(.plugin)|sort)==["agent-work-policy","write-doc"])
        and ([.steps[]|select(has("skill"))]|length)==0
-       and (.steps|map(.id))==["read-policy","workspace","inspect-conflicts","report-before-resolution","approve-conflict-proposal","resolve-conflicts","report-after-resolution","report"]
+       and (.steps|map(.id))==["read-policy","workspace","detect-conflicts","inspect-conflicts","report-before-resolution","approve-conflict-proposal","resolve-conflicts","verify","report-after-resolution","report"]
        and (.steps[0].provides|index("conflict_report"))
        and all(.steps[]|select(has("when") and (.when|test("conflict_report"))); (.needs|index("conflict_report")))
        and ((.steps[]|select(.id=="resolve-conflicts")).conditional_needs|map(.needs[])|index("conflict_proposal_approved"))' <<<"$resolve_pb" >/dev/null \
@@ -189,7 +189,12 @@ config_contract resolve-pr-conflicts '.conflict_report.timing = "later"' '.extra
 config_contract respond-to-pr-review '.permissions.commit = true' '.gates.before_push = true' 'del(.git)' '.report.timing = "later"' '.verification.commands = [""]' '.extra = 1'
 
 # ── 決定論的toolの契約 ────────────────────────────────────────────────
-python3 -m unittest discover -s "$ROOT/tests" -p test_verification_cli.py >/dev/null 2>&1 && pass "verify.sh のJSON出力と失敗停止" || fail "tests/test_verification_cli.py"
+python3 -m unittest discover -s "$ROOT/tests" -p test_verification_cli.py >/dev/null 2>&1 && pass "verify.py（3入口）の設定からのcommand取得・JSON出力・失敗停止と、conflicts.py（2入口）の非破壊な競合検出" || fail "tests/test_verification_cli.py"
+# verify.py と conflicts.py の複製一致 — 基準資料: open-pull-request/scripts/ の同名file。入力: 他の入口の同名file。正規化: byte 列。合格述語: cmp が一致。
+# 失敗時の診断: 入口の path。正例: 現行。反例: 片方だけ編集。境界例: 改行 code の差も不合格。意味評価として残す範囲: 検証commandの選び方、競合の意味
+cmp -s "$OPEN/scripts/verify.py" "$RESOLVE/scripts/verify.py" && cmp -s "$OPEN/scripts/verify.py" "$REVIEW/scripts/verify.py" \
+  && pass "verify.py は3入口でbyte一致（同じ基準資料の複製）" || fail "verify.py が3入口で異なる"
+cmp -s "$OPEN/scripts/conflicts.py" "$RESOLVE/scripts/conflicts.py" && pass "conflicts.py は2入口でbyte一致（同じ基準資料の複製）" || fail "conflicts.py が2入口で異なる"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo/.harness-plugins"
 cfg="$repo/.harness-plugins/respond-to-pr-review.config.yml"

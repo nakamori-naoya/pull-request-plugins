@@ -10,7 +10,7 @@ requires:
   - {plugin: write-doc, marketplace: write-doc}
   - {plugin: agent-work-policy, marketplace: agent-work-policy}
 
-# stepsは記載順に実行する。script: 自分の入口内の処理。playbook: 外部packageの公開playbook。
+# stepsは記載順に実行する。script: 自分の入口内の決定論的な処理。playbook: 外部packageの公開playbook。
 # 外部playbookの完全な入力objectは同じagentがneedsと利用者入力から実行時に組み立てる。
 # YAMLへ部分objectや動的placeholderを置かない。when: 実行時成果または設定fileの値が真のときだけ実行する。
 steps:
@@ -24,11 +24,17 @@ steps:
     purpose: 何も変えずに、いまの作業場所と状態（作業branch、clean、baseの有無）を受け取る
     needs: [repository_path]
     provides: [workspace, workspace_state, gate_state]
+  - id: detect-conflicts
+    script: scripts/conflicts.py
+    purpose: 未解消のindexと git merge-tree の非破壊mergeで、base branchとの競合の有無と競合fileを検出する
+    needs: [workspace, workspace_state, user_input]
+    provides: [conflict_state]
   - id: inspect-conflicts
     agent_work: invoking_agent
-    purpose: 現行実装、関連commit、過去PRから競合と両側の意図を調べる。競合が無ければ検出方法を添えてそう記録する
-    needs: [workspace, workspace_state, user_input]
-    provides: [conflict_state, conflict_assessment]
+    when: conflict_state.has_conflicts
+    purpose: 現行実装、関連commit、過去PRから、検出した競合の両側の意図を調べる
+    needs: [workspace, conflict_state, user_input]
+    provides: [conflict_assessment]
   - id: report-before-resolution
     playbook: write-doc
     when: conflict_state.has_conflicts && conflict_report.timing == before_resolution
@@ -44,12 +50,18 @@ steps:
   - id: resolve-conflicts
     agent_work: invoking_agent
     when: conflict_state.has_conflicts
-    purpose: 調査した意図と現在状態を照合し、競合を解消して設定fileの検証commandを全件通す
-    needs: [conflict_report, verification, conflict_state, conflict_assessment]
+    purpose: 調査した意図と現在状態を照合し、両側の目的を保って競合を解消する
+    needs: [conflict_report, conflict_state, conflict_assessment]
     conditional_needs:
       - when: conflict_report.timing == before_resolution
         needs: [conflict_proposal_approved]
-    provides: [conflict_resolution, conflict_verification]
+    provides: [conflict_resolution]
+  - id: verify
+    script: scripts/verify.py
+    when: conflict_state.has_conflicts
+    purpose: 設定fileの verification.commands を記載順に実行し、1件でも失敗したら残りを実行せず止まる
+    needs: [verification, conflict_resolution]
+    provides: [conflict_verification]
   - id: report-after-resolution
     playbook: write-doc
     when: conflict_state.has_conflicts && conflict_report.timing == after_resolution

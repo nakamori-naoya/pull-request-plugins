@@ -9,7 +9,7 @@ inputs: [repository_path, user_input, document_destination, references]
 requires:
   - {plugin: agent-work-policy, marketplace: agent-work-policy}
 
-# stepsは記載順に実行する。script: 自分の入口内の処理。skill: 同packageの公開入口。playbook: 外部packageの公開playbook。
+# stepsは記載順に実行する。script: 自分の入口内の決定論的な処理。skill: 同packageの公開入口。playbook: 外部packageの公開playbook。
 # 外部playbookの完全な入力objectは同じagentがneedsと利用者入力から実行時に組み立てる。
 # YAMLへ部分objectや動的placeholderを置かない。when: 実行時成果が真のときだけ実行する。
 steps:
@@ -24,8 +24,8 @@ steps:
     needs: [repository_path]
     provides: [workspace, workspace_state, gate_state]
   - id: detect-conflicts
-    agent_work: invoking_agent
-    purpose: git ls-files -u と非破壊のmerge予測で、base branchとの競合の有無だけを検出する。調査・解消はしない
+    script: scripts/conflicts.py
+    purpose: 未解消のindexと git merge-tree の非破壊mergeで、base branchとの競合の有無と競合fileだけを検出する。調査・解消はしない
     needs: [workspace, workspace_state]
     provides: [conflict_state]
   - id: resolve-conflicts
@@ -35,8 +35,8 @@ steps:
     needs: [repository_path, user_input, document_destination, references, conflict_state]
     provides: [conflict_resolution]
   - id: verify
-    agent_work: invoking_agent
-    purpose: 設定fileの verification.commands を記載順に全件、作業branchで実行する。失敗したら先へ進まない
+    script: scripts/verify.py
+    purpose: 設定fileの verification.commands を記載順に作業branchで実行し、1件でも失敗したら残りを実行せず止まる
     needs: [verification, workspace_state]
     conditional_needs:
       - when: conflict_state.has_conflicts
