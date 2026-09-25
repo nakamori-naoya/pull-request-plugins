@@ -198,11 +198,13 @@ git -C "$repo" init -q -b main; printf 'a\n' > "$repo/a.txt"; git -C "$repo" add
 gate_ok=1
 python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" | jq -e '.status=="ready"' >/dev/null || gate_ok=0
 python3 "$REVIEW/scripts/review-gate.py" permission --repo "$repo" --name review_import | jq -e '.allowed==true' >/dev/null || gate_ok=0
-if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 >/dev/null 2>&1; then gate_ok=0; fi
-scope='{"actions":["pull-request/after-assessment","merge"],"pull_requests":[7],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'
-python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 --approval "$scope" | jq -e '.status=="allowed"' >/dev/null || gate_ok=0
-out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_modify --pr 7 --approval "$scope"); [ "$?" -eq 3 ] && jq -e '.outside_approval==["action"]' <<<"$out" >/dev/null || gate_ok=0
-python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --pr 7 --approval '{"actions":["pull-request/after-assessment"]}' >/dev/null 2>&1; [ "$?" -eq 2 ] || gate_ok=0
+if python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --branch agent/review-7 >/dev/null 2>&1; then gate_ok=0; fi
+scope='{"actions":["pull-request/after-assessment","merge"],"pull_requests":[7],"branches":["agent/"],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --branch agent/review-7 --approval "$scope" | jq -e '.status=="allowed"' >/dev/null || gate_ok=0
+out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_modify --branch agent/review-7 --approval "$scope"); [ "$?" -eq 3 ] && jq -e '.outside_approval==["action"]' <<<"$out" >/dev/null || gate_ok=0
+# merge 以外の確認は作業branchで照合する（agent-work-policy §2.2）。PR番号だけを列挙した承認は、PR番号が一致していても範囲外
+out=$(python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --branch agent/review-7 --approval '{"actions":["pull-request/after-assessment"],"pull_requests":[7],"until":"2999-01-01T00:00:00+00:00","quote":["評価はそれでいい"]}'); [ "$?" -eq 3 ] && jq -e '.outside_approval==["branch"]' <<<"$out" >/dev/null || gate_ok=0
+python3 "$REVIEW/scripts/review-gate.py" gate --repo "$repo" --name after_assessment --branch agent/review-7 --approval '{"actions":["pull-request/after-assessment"]}' >/dev/null 2>&1; [ "$?" -eq 2 ] || gate_ok=0
 printf 'dirty\n' > "$repo/b.txt"
 if python3 "$REVIEW/scripts/review-gate.py" preflight --repo "$repo" >/dev/null 2>&1; then gate_ok=0; fi
 rm "$repo/b.txt"
@@ -239,12 +241,25 @@ assert outside.returncode == 3 and json.loads(outside.stdout)["outside_approval"
 for broken in ({**scope, "until": "2999-01-01T00:00:00"}, {**scope, "quote": []}, {k: v for k, v in scope.items() if k != "quote"}, {k: v for k, v in scope.items() if k != "branches"}, {**scope, "targets": ["x"]}):
     invalid = subprocess.run(gate + ["--approval", json.dumps(broken)], capture_output=True, text=True)
     assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid", broken
-missing = subprocess.run([sys.executable, f"{scripts}/gate.py", "--action", "pull-request/resolve-conflicts", "--pr", "1", "--branch", "agent/x"], capture_output=True, text=True)
-assert missing.returncode == 2
+for args in (["--pr", "1"], ["--action", "pull-request/resolve-conflicts"], ["--action", "pull-request/resolve-conflicts", "--pr", "1", "--branch", "agent/x"]):
+    missing = subprocess.run([sys.executable, f"{scripts}/gate.py", *args], capture_output=True, text=True)
+    assert missing.returncode == 2, args
+for broken in ({**scope, "pull_requests": 5}, {**scope, "pull_requests": [0]}, {**scope, "branches": "agent/"}):
+    invalid = subprocess.run(gate + ["--approval", json.dumps(broken)], capture_output=True, text=True)
+    assert invalid.returncode == 2 and json.loads(invalid.stdout)["status"] == "invalid", broken
+# レビュー受付の確認は merge ではないので、agent-work-policy §2.2 に従い作業branchで照合する。
+# branches: [agent/] だけの承認（PR番号がまだ無い時点で与えた承認）で通り、PR番号だけの承認では通らない
+ready = [sys.executable, f"{scripts}/gate.py", "--action", "pull-request/ready-for-review", "--branch", "agent/fix-a"]
+branch_only = {"actions": ["push", "pull-request", "pull-request/ready-for-review"], "branches": ["agent/"], "until": "2999-01-01T00:00:00+00:00", "quote": ["PRまで進めてレビューに出していい"]}
+passed = subprocess.run(ready + ["--approval", json.dumps(branch_only)], capture_output=True, text=True)
+assert passed.returncode == 0 and json.loads(passed.stdout)["status"] == "allowed", passed.stdout
+pr_only = {**{k: v for k, v in branch_only.items() if k != "branches"}, "pull_requests": [12]}
+stopped = subprocess.run(ready + ["--approval", json.dumps(pr_only)], capture_output=True, text=True)
+assert stopped.returncode == 3 and json.loads(stopped.stdout)["outside_approval"] == ["branch"], stopped.stdout
 edge = datetime(2999, 1, 1, tzinfo=timezone.utc)
-assert approval.mismatch(approval.parse(json.dumps(scope)), "pull-request/resolve-conflicts", None, "agent/fix-a", edge) == ["until"]
+assert approval.mismatch(approval.parse(json.dumps(scope)), "pull-request/resolve-conflicts", "agent/fix-a", edge) == ["until"]
 PY
-  [ "$gate_sh_ok" -eq 1 ] && pass "$entry gate.py: 承認待ち / 承認範囲の内と外 / 形の不正 / 期限の境界" || fail "$entry gate.py"
+  [ "$gate_sh_ok" -eq 1 ] && pass "$entry gate.py: 承認待ち / 承認範囲の内と外 / 形の不正 / 期限の境界 / branchだけの承認でレビュー受付を通す" || fail "$entry gate.py"
 done
 yq -o=json -I=0 '.' "$OPEN/assets/open-pull-request.config.example.yml" | jq -e '.version==1 and (.verification.commands|type)=="array" and (keys|sort)==["verification","version"]' >/dev/null \
   && pass "open-pull-request 設定の記入例が schema（version、commands 配列だけ。timing を持たない）に合う" || fail "open-pull-request 設定の記入例"
