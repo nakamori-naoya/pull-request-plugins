@@ -1,6 +1,6 @@
 {
   "name": "pull-request",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "description": "Pull Requestの作成、競合の解消、reviewへの対応で外しやすい判断を持つskill 3つを提供する",
   "author": {
     "name": "NaoyaNakamori"
