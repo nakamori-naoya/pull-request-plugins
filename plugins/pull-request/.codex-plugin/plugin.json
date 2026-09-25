@@ -1,6 +1,6 @@
 {
   "name": "pull-request",
-  "version": "5.1.0",
+  "version": "6.0.0",
   "description": "Pull Requestの作成（平時）、競合の調査・解消（例外）、review responseの自己完結skill 3つを提供する",
   "author": {
     "name": "NaoyaNakamori"
