@@ -12,8 +12,7 @@
   ],
   "metadata": {
     "harness": {
-      "marketplace": "pull-request",
-      "contractVersion": 1
+      "marketplace": "pull-request"
     }
   }
 }
