@@ -17,7 +17,7 @@ python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" && pass "package 構造�
 python3 "$TOOLS/test-hardening.py" --repository "$ROOT" && pass "保守toolの回帰検査" || fail "保守toolの回帰検査"
 
 jq -e '.skills==["./skills/open-pull-request","./skills/resolve-pr-conflicts","./skills/respond-to-pr-review"]
-       and .metadata.harness=={"marketplace":"pull-request","contractVersion":1}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
+       and .metadata.harness=={"marketplace":"pull-request"}' "$PACKAGE/.codex-plugin/plugin.json" >/dev/null \
   && pass "公開入口3つ、playbooks / implements 無し" || fail "manifest の公開宣言"
 [ "$(find "$ROOT/plugins" -name SKILL.md -type f | wc -l | tr -d ' ')" -eq 3 ] && pass "SKILL.md は公開入口の3本だけ" || fail "SKILL.md の本数"
 [ "$(find "$ROOT/plugins" -type l | wc -l | tr -d ' ')" -eq 0 ] && pass "配布物に symlink なし" || fail "配布物に symlink がある"
