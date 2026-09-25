@@ -1,7 +1,0 @@
-# open-pull-request のrepository設定の記入例。<repo>/.harness-plugins/open-pull-request.config.yml へ全keyを書いて置く。
-# 同梱既定へのfallbackは無く、この例が既定値として読まれることもない。
-# verification.commands: Pull Request作成前に、作業branchですべて成功させるcommand。競合の有無に関わらず走る。空配列 [] なら走らせない。
-# 競合資料の提示時点（conflict_report.timing）は resolve-pr-conflicts の設定fileが持つ。
-version: 1
-verification:
-  commands: ["git diff --check"]
