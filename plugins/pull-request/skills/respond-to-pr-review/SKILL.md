@@ -17,6 +17,6 @@ PR の本文と diff から変更の目的を取り、comment が指す行を含
 
 評価を示し、採否を利用者に確かめる。reviewer と実装者のどちらの意図を優先するかは、エージェントが決めてよいことではないからである。accept が 0 件なら何も変えず、reject と defer の根拠を報告して終える。
 
-直すのは、確かめた accept の comment だけである。reject と defer、評価に無い改善、書式の一括変更を混ぜない。直した後に diff を評価と照らし、採っていない変更が混ざっていれば先へ進まない。repository が完了判定に使う検証を通してから commit する。検証の command は、作業方針の設定の `verification.commands` を記載順にすべて実行する。設定は、repository が自分の `.harness-plugins/agent-work-policy.config.yml` を持っていればその一つだけを読み、持っていなければ `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.harness-plugins/agent-work-policy.config.yml` を読む。二つを重ねて上書きしない。どちらも無ければ、検証を推測で選ばずに止まる。commit と push は `git` で直接行い、agent-work-policy の規律に従う。
+直すのは、確かめた accept の comment だけである。reject と defer、評価に無い改善、書式の一括変更を混ぜない。直した後に diff を評価と照らし、採っていない変更が混ざっていれば先へ進まない。repository が完了判定に使う検証を通してから commit する。検証の command は、対象の repository の AGENTS.md が完了判定として定めるものを、記載順にすべて実行する。定めが無ければ、推測で選ばずに止まって確かめる。commit と push は `git` で直接行い、agent-work-policy の規律に従う。
 
 報告には、comment ごとの採否と根拠、変えたファイル、検証の結果、commit と push の結果を書く。review への返信と thread の resolve は GitHub に書き込む操作なので、利用者が頼んだときだけ行う。
