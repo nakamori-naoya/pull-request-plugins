@@ -135,4 +135,4 @@ bash scripts/validate.sh
 
 `respond-to-pr-review` は、review commentを受け入れるか、退けるか、保留するかの判断と、採用した分だけを直す範囲を持つ。
 
-三つの入口は、この package 自身の人の確認（レビュー受付、解消前の提案、評価と修正の前後）を、承認範囲で照合する。確認の名前（`pull-request/` で始まるもの）はこの package が持つ。承認範囲の形と組み立ててよい者は持たず、`agent-work-policy` の公開契約に従う。公開Git操作のpermission、gate、merge方式とbaseへの追従の関係も、`agent-work-policy` に従う。
+三つの入口は、この package 自身の人の確認（レビュー受付、解消前の提案、評価と修正の前後）を、承認範囲で照合する。確認の名前（`pull-request/` で始まるもの）はこの package が持つ。承認範囲の形、組み立ててよい者、操作ごとに何で対象を照合するかは持たず、`agent-work-policy` の公開契約 §2.2 に従う。この package の確認はどれも merge ではないので、作業branchで照合される。公開Git操作のpermission、gate、merge方式とbaseへの追従の関係も、`agent-work-policy` に従う。
