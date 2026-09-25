@@ -1,5 +1,5 @@
 # resolve-pr-conflicts — 作業branchとbase branchの競合を調査・資料化し、gateを経て解消・検証する。
-# 工程順はこのYAMLの宣言を正式な定義とするで、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
+# 工程はこのYAMLに宣言した順に実行し、agent_work工程はこのSKILLを実行する同じagentが同じ文脈で担う。
 # repositoryごとの方針（conflict_report.timing / verification.commands）は <repo>/.harness-plugins/resolve-pr-conflicts.config.yml が持つ。
 # 公開Git操作（push / PR作成）はこの入口の仕事ではなく、作業場所の照会だけを agent-work-policy の公開契約で行う。
 version: 2
