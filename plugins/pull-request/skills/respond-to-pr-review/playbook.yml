@@ -70,8 +70,8 @@ steps:
     needs: [changes, change_report, gates]
     provides: [changes_approved]
   - id: verify
-    agent_work: invoking_agent
-    purpose: 設定された検証を実行する
+    script: scripts/verify.py
+    purpose: 設定fileの verification.commands を記載順に実行し、1件でも失敗したら残りを実行せず止まる
     needs: [changes_approved, verification_commands]
     provides: [verification]
   - id: report-before-commit
