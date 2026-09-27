@@ -21,4 +21,4 @@ PR を作る前に、repository が完了判定に使う検証を作業 branch �
 
 ## レビュー受付へ移すのは、内部レビューが済んだと明示されてから
 
-draft の PR をレビュー受付へ移すのは、利用者か manager が内部レビューの完了を明示した後だけである。作った直後に無条件で外さない。PR を作っても merge はしない。merge と base への追従は、agent-work-policy の規律に従う。
+draft の PR をレビュー受付へ移すのは、利用者か manager が内部レビューの完了を明示した後だけである。作った直後に無条件で外さない。PR を作っても merge はしない。merge と base への追従は、git-work-policy の規律に従う。
