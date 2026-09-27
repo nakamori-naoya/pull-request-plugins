@@ -1,0 +1,2 @@
+LIBRARY_API_TOKEN=example-token-for-eval-only
+LIBRARY_DB_URL=postgres://librarian:example-password@localhost:5432/library
