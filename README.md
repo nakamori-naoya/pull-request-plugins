@@ -10,7 +10,7 @@ Pull Requestの作成、競合の解消、reviewへの対応で、AIエージェ
 
 `respond-to-pr-review` は、review commentをsourceとtestに照らしてaccept、reject、deferに分け、採否を利用者に確かめてから、採用分だけを直すことを持つ。
 
-commit、push、merge、baseへの追従の規律は `agent-work-policy` が持つ。
+commit、push、merge、baseへの追従の規律は `git-work-policy` が持つ。
 
 ## 利用例
 
@@ -24,7 +24,7 @@ PR #42のreview commentを評価し、採用する指摘だけを修正して検
 
 ## インストール
 
-インストールするのは`pull-request@pull-request`です。commit、push、mergeの規律は`agent-work-policy@agent-work-policy`が持つので、一緒に入れます。下のコマンドには、それも含めています。
+インストールするのは`pull-request@pull-request`です。commit、push、mergeの規律は`git-work-policy@git-work-policy`が持つので、一緒に入れます。下のコマンドには、それも含めています。
 
 ### Codex
 
@@ -32,7 +32,7 @@ PR #42のreview commentを評価し、採用する指摘だけを修正して検
 
 ```bash
 codex plugin marketplace add nakamori-naoya/agent-work-policy-plugins
-codex plugin add agent-work-policy@agent-work-policy
+codex plugin add git-work-policy@git-work-policy
 codex plugin marketplace add nakamori-naoya/pull-request-plugins
 codex plugin add pull-request@pull-request
 codex plugin list
@@ -47,7 +47,7 @@ codex plugin list
 ```bash
 CLAUDE_PLUGIN_SCOPE=user
 claude plugin marketplace add nakamori-naoya/agent-work-policy-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
-claude plugin install agent-work-policy@agent-work-policy --scope "$CLAUDE_PLUGIN_SCOPE"
+claude plugin install git-work-policy@git-work-policy --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin marketplace add nakamori-naoya/pull-request-plugins --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin install pull-request@pull-request --scope "$CLAUDE_PLUGIN_SCOPE"
 claude plugin list
